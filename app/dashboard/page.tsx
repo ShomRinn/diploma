@@ -14,6 +14,7 @@ import {
   ExternalLink,
 } from "lucide-react";
 import Link from "next/link";
+import { RealtimePanel } from "@/components/RealtimePanel";
 
 export default function HomePage() {
   const { address } = useAccount();
@@ -150,6 +151,9 @@ export default function HomePage() {
           </div>
         </div>
       </div>
+
+      {/* Real-Time Network Panel */}
+      <RealtimePanel />
 
       {/* Recent Transactions */}
       <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-6">
