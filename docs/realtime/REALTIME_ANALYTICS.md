@@ -2,17 +2,41 @@
 
 ## Overview
 
-This module provides real-time blockchain event streaming for the wallet application. It delivers live updates for network status, gas prices, and transaction notifications with a target latency of **1-5 seconds**.
+This module provides real-time blockchain event streaming for the wallet application. It delivers live updates for network status, gas prices, and transaction notifications with a target latency of **2-12 seconds** (depending on network block time).
+
+### Key Features
+- **Multi-network support**: Switch between 8 blockchain networks
+- **HTTP polling**: Works with all free public RPCs (no WebSocket required)
+- **Network selector UI**: Users can choose which network to monitor
+- **Gas price chart**: Visual history of gas prices over time
 
 ## Table of Contents
 
-1. [Architecture](#architecture)
-2. [Event Flow](#event-flow)
-3. [Real-Time Data Definition](#real-time-data-definition)
-4. [Implementation Details](#implementation-details)
-5. [API Reference](#api-reference)
-6. [Frontend Integration](#frontend-integration)
-7. [Error Handling](#error-handling)
+1. [Supported Networks](#supported-networks)
+2. [Architecture](#architecture)
+3. [Event Flow](#event-flow)
+4. [Real-Time Data Definition](#real-time-data-definition)
+5. [Implementation Details](#implementation-details)
+6. [API Reference](#api-reference)
+7. [Frontend Integration](#frontend-integration)
+8. [Error Handling](#error-handling)
+
+---
+
+## Supported Networks
+
+| Network | Chain ID | RPC Provider | Block Time | Type |
+|---------|----------|--------------|------------|------|
+| Ethereum Mainnet | 1 | Ankr | ~12s | Mainnet |
+| Linea Mainnet | 59144 | Linea | ~2s | L2 |
+| Linea Sepolia | 59141 | Linea | ~2s | Testnet |
+| Polygon | 137 | Ankr | ~2s | Mainnet |
+| Arbitrum One | 42161 | Ankr | ~0.25s | L2 |
+| Optimism | 10 | Ankr | ~2s | L2 |
+| Base | 8453 | Base | ~2s | L2 |
+| Sepolia | 11155111 | Ankr | ~12s | Testnet |
+
+**Default**: Linea Sepolia (testnet) - recommended to avoid rate limits on free RPCs.
 
 ---
 
@@ -22,54 +46,53 @@ This module provides real-time blockchain event streaming for the wallet applica
 
 ```
 ┌─────────────────────────────────────────────────────────────────────────────┐
-│                          REAL-TIME ANALYTICS SYSTEM                          │
+│                     REAL-TIME ANALYTICS SYSTEM (Multi-Network)              │
 └─────────────────────────────────────────────────────────────────────────────┘
 
-┌──────────────┐     ┌──────────────────────┐     ┌───────────────────────────┐
-│   SOURCES    │     │       BACKEND        │     │         FRONTEND          │
-│              │     │                      │     │                           │
-│ ┌──────────┐ │     │ ┌──────────────────┐ │     │ ┌───────────────────────┐ │
-│ │Blockchain│─┼────►│ │ BlockchainService│ │     │ │  useRealtimeBlockchain│ │
-│ │  (RPC)   │ │     │ │                  │ │     │ │        (Hook)         │ │
-│ └──────────┘ │     │ │ • Block Watcher  │ │     │ └───────────┬───────────┘ │
-│              │     │ │ • Gas Poller     │ │     │             │             │
-│ ┌──────────┐ │     │ │ • TX Monitor     │ │     │             ▼             │
-│ │  Linea   │ │     │ └────────┬─────────┘ │     │ ┌───────────────────────┐ │
-│ │ Sepolia  │ │     │          │           │     │ │    RealtimePanel      │ │
-│ └──────────┘ │     │          ▼           │     │ │                       │ │
-│              │     │ ┌──────────────────┐ │     │ │ • Connection Status   │ │
-└──────────────┘     │ │   SSE Endpoint   │─┼────►│ │ • Block Number        │ │
-                     │ │ /api/realtime/   │ │ SSE │ │ • Gas Price + Chart   │ │
-                     │ │     stream       │ │     │ │ • Network Load        │ │
-                     │ └──────────────────┘ │     │ │ • TX Feed             │ │
-                     │                      │     │ └───────────────────────┘ │
-                     │ ┌──────────────────┐ │     │                           │
-                     │ │  REST Endpoint   │ │     │ ┌───────────────────────┐ │
-                     │ │ /api/realtime/   │─┼────►│ │   ConnectionBanner    │ │
-                     │ │     state        │ │REST │ │ (Error/Reconnecting)  │ │
-                     │ └──────────────────┘ │     │ └───────────────────────┘ │
-                     │                      │     │                           │
-                     └──────────────────────┘     └───────────────────────────┘
+┌──────────────────┐     ┌────────────────────────┐     ┌─────────────────────┐
+│  NETWORK SOURCES │     │        BACKEND         │     │      FRONTEND       │
+│                  │     │                        │     │                     │
+│ ┌──────────────┐ │     │ ┌────────────────────┐ │     │ ┌─────────────────┐ │
+│ │ Ethereum RPC │─┼────►│ │                    │ │     │ │ Network Selector│ │
+│ │  (Ankr)      │ │     │ │ BlockchainService  │ │     │ │  [Dropdown]     │ │
+│ └──────────────┘ │     │ │                    │ │     │ └────────┬────────┘ │
+│ ┌──────────────┐ │     │ │ • HTTP Polling     │ │     │          │          │
+│ │ Linea RPC    │─┼────►│ │ • Per-network      │ │     │          ▼          │
+│ └──────────────┘ │     │ │   instances        │ │     │ ┌─────────────────┐ │
+│ ┌──────────────┐ │     │ │ • Gas price fetch  │ │     │ │ RealtimePanel   │ │
+│ │ Polygon RPC  │─┼────►│ │ • TX monitoring    │ │     │ │                 │ │
+│ │  (Ankr)      │ │     │ └─────────┬──────────┘ │     │ │ • Block #       │ │
+│ └──────────────┘ │     │           │            │     │ │ • Gas + Chart   │ │
+│ ┌──────────────┐ │     │           ▼            │     │ │ • Network Load  │ │
+│ │ Arbitrum RPC │─┼────►│ ┌────────────────────┐ │     │ │ • TX Feed       │ │
+│ │  (Ankr)      │ │     │ │  SSE Endpoint      │─┼────►│ └─────────────────┘ │
+│ └──────────────┘ │     │ │ ?network=ethereum  │ │ SSE │                     │
+│       ...        │     │ └────────────────────┘ │     │ ┌─────────────────┐ │
+└──────────────────┘     │                        │     │ │ConnectionBanner │ │
+                         │                        │     │ │ (if disconnected)│ │
+                         └────────────────────────┘     │ └─────────────────┘ │
+                                                        └─────────────────────┘
 ```
 
 ### Component Structure
 
 ```
 lib/realtime/
-├── types.ts                    # Type definitions
-├── blockchain-service.ts       # Core service (event processing)
-├── index.ts                    # Module exports
+├── types.ts                      # Type definitions
+├── networks.ts                   # Network configurations (NEW)
+├── blockchain-service.ts         # Core service (HTTP polling)
+├── index.ts                      # Module exports
 └── hooks/
-    └── useRealtimeBlockchain.ts  # React hook
+    └── useRealtimeBlockchain.ts  # React hook with network switching
 
 app/api/realtime/
 ├── stream/
-│   └── route.ts                # SSE streaming endpoint
+│   └── route.ts                  # SSE endpoint (?network=xxx)
 └── state/
-    └── route.ts                # REST state endpoint
+    └── route.ts                  # REST state endpoint
 
 components/
-└── RealtimePanel.tsx           # UI component
+└── RealtimePanel.tsx             # UI with network selector + chart
 ```
 
 ---
@@ -80,24 +103,27 @@ components/
 
 ```
 ┌─────────────────────────────────────────────────────────────────────────────┐
-│                             EVENT FLOW DIAGRAM                               │
+│                        EVENT FLOW DIAGRAM (HTTP Polling)                     │
 └─────────────────────────────────────────────────────────────────────────────┘
 
- SOURCE              TRIGGER           BACKEND              DELIVERY      UI
+ SOURCE              TRIGGER              BACKEND              DELIVERY     UI
 ────────────────────────────────────────────────────────────────────────────────
 
-┌─────────┐     ┌─────────────┐     ┌─────────────┐     ┌─────────┐    ┌──────┐
-│Blockchain│────►│ New Block   │────►│BlockService │────►│   SSE   │───►│Block │
-│  Node   │     │  Mined      │     │ watchBlocks │     │ Stream  │    │Number│
-└─────────┘     └─────────────┘     └─────────────┘     └─────────┘    └──────┘
-                      │
-                      │              ┌─────────────┐     ┌─────────┐    ┌──────┐
-                      └─────────────►│ Gas Poller  │────►│   SSE   │───►│ Gas  │
-                                     │ (12s interval)   │ Stream  │    │Price │
-                                     └─────────────┘     └─────────┘    └──────┘
-                                            │
-                                            │            ┌─────────┐    ┌──────┐
-                                            └───────────►│   SSE   │───►│Chart │
+┌─────────┐     ┌──────────────────┐     ┌─────────────┐     ┌───────┐   ┌──────┐
+│ RPC     │◄────│ HTTP Poll        │◄────│BlockService │────►│  SSE  │──►│Block │
+│ (Ankr)  │     │ eth_getBlock     │     │ (per network)    │ Stream│   │Number│
+└─────────┘     │ every 2-12s      │     └─────────────┘     └───────┘   └──────┘
+                └──────────────────┘              │
+                                                  │
+                ┌──────────────────┐              │          ┌───────┐   ┌──────┐
+                │ HTTP Poll        │◄─────────────┤         │  SSE  │──►│ Gas  │
+                │ eth_gasPrice     │              │         │ Stream│   │Price │
+                │ every 12s        │              │         └───────┘   └──────┘
+                └──────────────────┘              │
+                                                  │          ┌───────┐   ┌──────┐
+                                                  └─────────►│  SSE  │──►│Chart │
+                                                             │ Stream│   │      │
+                                                             └───────┘   └──────┘
                                                          │ Stream  │    │      │
                                                          └─────────┘    └──────┘
 
@@ -230,30 +256,49 @@ export async function GET(request: NextRequest) {
 }
 ```
 
-#### 2. Event Processing
+#### 2. Event Processing (HTTP Polling)
 
 **Location**: `lib/realtime/blockchain-service.ts`
 
-Events are processed as they arrive:
+**Why Polling instead of WebSocket?**
+- Most free public RPCs don't support WebSocket subscriptions (`eth_subscribe`)
+- HTTP polling works with ALL RPC providers (Ankr, Infura, Alchemy free tiers)
+- More reliable - no dropped connections through Cloudflare/proxies
 
-- **Filtering**: Only emit transactions for watched addresses
+Events are processed via HTTP polling:
+
+- **Block polling**: `eth_getBlockByNumber("latest")` every 2-12 seconds
+- **Gas polling**: `eth_gasPrice` every 12 seconds
+- **Filtering**: Only emit new blocks (compare block numbers)
 - **Aggregation**: Calculate gas trend from price history
-- **Enrichment**: Add human-readable values (Gwei, ETH)
 
 ```typescript
-// Block processing
-this.client.watchBlocks({
-  onBlock: async (block) => {
-    // 1. Emit block event
-    this.emit(blockEvent);
+// Block polling (more reliable than WebSocket for free RPCs)
+private startBlockPolling(): void {
+  const pollInterval = Math.max(this.currentNetwork.avgBlockTime * 1000, 2000);
+  
+  const pollBlocks = async () => {
+    const block = await this.client.getBlock({ blockTag: 'latest' });
     
-    // 2. Check for user transactions
-    await this.checkBlockForTransactions(block);
+    if (block.number > lastBlockNumber) {
+      lastBlockNumber = block.number;
+      this.emit(blockEvent);
+      
+      // Check for user transactions
+      if (this.state.watchedAddress) {
+        await this.checkBlockForTransactions(block);
+      }
+    }
     
-    // 3. Gas is polled separately on 12s interval
-  },
-});
+    // Schedule next poll
+    if (this.isRunning) {
+      setTimeout(pollBlocks, pollInterval);
+    }
+  };
+}
 ```
+
+**Per-Network Instances**: Each network gets its own service instance to allow simultaneous monitoring.
 
 #### 3. State Retrieval Endpoint
 
@@ -347,10 +392,19 @@ Real-time data may be unavailable. Displayed information could be stale.
 ### SSE Endpoint
 
 ```
-GET /api/realtime/stream?address={walletAddress}
+GET /api/realtime/stream?network={networkId}&address={walletAddress}
 ```
 
 **Query Parameters**:
+- `network` (required): Network ID to connect to. Options:
+  - `ethereum` - Ethereum Mainnet
+  - `linea` - Linea Mainnet
+  - `linea-sepolia` - Linea Sepolia (default)
+  - `polygon` - Polygon Mainnet
+  - `arbitrum` - Arbitrum One
+  - `optimism` - Optimism
+  - `base` - Base
+  - `sepolia` - Sepolia Testnet
 - `address` (optional): Wallet address to watch for transactions
 
 **Response**: `text/event-stream`
@@ -375,7 +429,7 @@ POST /api/realtime/state
 
 **Body**:
 ```json
-{ "action": "start" | "stop", "address": "0x..." }
+{ "action": "start" | "stop", "address": "0x...", "network": "ethereum" }
 ```
 
 ---
@@ -392,16 +446,29 @@ function MyComponent() {
     isConnected,
     connectionStatus,
     error,
+    // Network
+    networkId,
+    network,
+    availableNetworks,
+    switchNetwork,
+    // Data
     latestBlock,
     gasInfo,
     recentTransactions,
     reconnect,
   } = useRealtimeBlockchain({
+    networkId: 'linea-sepolia', // Default network
     watchAddress: '0x...',
     enabled: true,
     onBlock: (event) => console.log('New block:', event),
     onTransaction: (event) => toast('Transaction detected!'),
+    onNetworkChange: (network) => console.log('Switched to:', network.name),
   });
+
+  // Switch network programmatically
+  const handleNetworkSwitch = () => {
+    switchNetwork('ethereum'); // Switch to Ethereum Mainnet
+  };
 }
 ```
 
@@ -410,11 +477,28 @@ function MyComponent() {
 ```tsx
 import { RealtimePanel } from '@/components/RealtimePanel';
 
-// Full panel
+// Full panel with network selector
 <RealtimePanel />
 
-// Compact mode
+// Compact mode (no network selector)
 <RealtimePanel compact />
+```
+
+### Network Selector UI
+
+The `RealtimePanel` includes a dropdown to switch networks:
+
+```
+┌─────────────────────────────────────────────────────────────────┐
+│ ⚡ Real-Time Network   [🌐 Linea Sepolia ▼]           🟢 Live   │
+├─────────────────────────────────────────────────────────────────┤
+│                        ┌─────────────────────┐                  │
+│                        │ Ethereum Mainnet    │                  │
+│                        │ Linea Mainnet       │                  │
+│                        │ Linea Sepolia ✓     │                  │
+│                        │ Polygon       [Test]│                  │
+│                        └─────────────────────┘                  │
+└─────────────────────────────────────────────────────────────────┘
 ```
 
 ---
@@ -441,19 +525,23 @@ import { RealtimePanel } from '@/components/RealtimePanel';
 
 ## Performance Considerations
 
-- **SSE vs WebSocket**: SSE chosen for simplicity and HTTP/2 compatibility
-- **Singleton Service**: Only one blockchain connection per server instance
+- **HTTP Polling vs WebSocket**: Polling chosen for compatibility with free public RPCs
+- **Per-Network Instances**: Each network gets its own service instance (Map-based)
+- **Polling Intervals**: 
+  - Ethereum/Sepolia: 12 seconds (matches block time)
+  - L2s (Linea, Arbitrum, etc.): 2 seconds
 - **Gas History**: Limited to 30 readings (~6 minutes) to bound memory
 - **Transaction History**: Limited to 20 transactions
 - **Keep-alive**: 30-second ping to prevent proxy timeouts
+- **RPC Provider**: Ankr (free tier with generous rate limits)
 
 ---
 
 ## Future Improvements
 
-- [ ] WebSocket fallback for environments where SSE is blocked
-- [ ] Multi-chain support
-- [ ] Pending transaction pool monitoring
-- [ ] Price feed integration (when free sources available)
+- [ ] WebSocket support for paid RPC plans (lower latency)
+- [ ] Custom RPC URL input
+- [ ] Multiple simultaneous network monitoring
+- [ ] Price feed integration
 - [ ] Historical data export
-
+- [ ] Alerting on gas price thresholds
