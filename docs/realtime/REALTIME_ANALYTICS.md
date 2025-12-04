@@ -537,11 +537,3 @@ The `RealtimePanel` includes a dropdown to switch networks:
 
 ---
 
-## Future Improvements
-
-- [ ] WebSocket support for paid RPC plans (lower latency)
-- [ ] Custom RPC URL input
-- [ ] Multiple simultaneous network monitoring
-- [ ] Price feed integration
-- [ ] Historical data export
-- [ ] Alerting on gas price thresholds
