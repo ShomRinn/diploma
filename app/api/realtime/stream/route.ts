@@ -12,11 +12,13 @@
  * Target Latency: 1-5 seconds
  * 
  * @route GET /api/realtime/stream
+ * @query network - Network ID (ethereum, linea, polygon, etc.)
  * @query address - Optional wallet address to watch for transactions
  */
 
 import { NextRequest } from 'next/server';
 import { getRealtimeService } from '@/lib/realtime/blockchain-service';
+import { getNetworkById } from '@/lib/realtime/networks';
 import type { RealtimeEvent } from '@/lib/realtime/types';
 
 // =============================================================================
@@ -57,15 +59,28 @@ function serializeEvent(event: RealtimeEvent): RealtimeEvent {
 
 export async function GET(request: NextRequest) {
   const searchParams = request.nextUrl.searchParams;
+  const networkId = searchParams.get('network') || 'ethereum';
   const watchAddress = searchParams.get('address');
+
+  // Validate network
+  const network = getNetworkById(networkId);
+  if (!network) {
+    return new Response(
+      JSON.stringify({ error: `Unknown network: ${networkId}` }),
+      { status: 400, headers: { 'Content-Type': 'application/json' } }
+    );
+  }
+
+  console.log(`[SSE] New connection for network: ${networkId}`);
 
   // Create a readable stream for SSE
   const stream = new ReadableStream({
     start(controller) {
       const encoder = new TextEncoder();
       
-      // Get or create the realtime service
-      const service = getRealtimeService();
+      // Get or create the realtime service for this network
+      const service = getRealtimeService({ networkId });
+      console.log(`[SSE] Using service for network: ${service.getCurrentNetwork().name}`);
       
       // Set watch address if provided
       if (watchAddress) {
@@ -77,16 +92,18 @@ export async function GET(request: NextRequest) {
         console.error('[SSE] Failed to start service:', error);
       });
 
-      // Send initial connection event
+      // Send initial connection event with network info
+      const currentNetwork = service.getCurrentNetwork();
       const connectionEvent: RealtimeEvent = {
         type: 'connection',
         timestamp: Date.now(),
         data: {
           status: 'connected',
-          message: 'Connected to real-time blockchain stream',
+          message: `Connected to ${currentNetwork.name}`,
         },
       };
       controller.enqueue(encoder.encode(formatSSEMessage(connectionEvent)));
+      console.log(`[SSE] Client connected to ${currentNetwork.name}`);
 
       // Send current state as initial data
       const state = service.getState();

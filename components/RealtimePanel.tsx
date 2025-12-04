@@ -4,6 +4,7 @@
  * Real-Time Blockchain Analytics Panel
  * 
  * This component displays real-time blockchain data including:
+ * - Network selector to switch between chains
  * - Network status and connection indicator
  * - Latest block information
  * - Gas price with trend visualization
@@ -30,6 +31,8 @@ import {
   RefreshCw,
   Clock,
   Zap,
+  ChevronDown,
+  Globe,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 
@@ -161,37 +164,137 @@ function NetworkLoadBar({ load }: { load: number }) {
 }
 
 function GasChart({ history }: { history: Array<{ timestamp: number; gwei: number }> }) {
-  if (!history || history.length < 2) return null;
+  if (!history || history.length < 2) {
+    return (
+      <div className="mt-3 bg-gray-50 rounded-lg p-3 text-center">
+        <p className="text-xs text-gray-400">Collecting data...</p>
+        <div className="flex justify-center gap-1 mt-2">
+          {[...Array(5)].map((_, i) => (
+            <div
+              key={i}
+              className="w-1 bg-gray-200 rounded animate-pulse"
+              style={{ height: `${10 + Math.random() * 20}px`, animationDelay: `${i * 0.1}s` }}
+            />
+          ))}
+        </div>
+      </div>
+    );
+  }
 
-  const maxGwei = Math.max(...history.map((h) => h.gwei));
-  const minGwei = Math.min(...history.map((h) => h.gwei));
-  const range = maxGwei - minGwei || 1;
+  const data = history.slice(0, 20).reverse();
+  const maxGwei = Math.max(...data.map((h) => h.gwei));
+  const minGwei = Math.min(...data.map((h) => h.gwei));
+  const avgGwei = data.reduce((sum, h) => sum + h.gwei, 0) / data.length;
+  
+  // Calculate range with minimum visual difference
+  // If values are too similar, create artificial range for visibility
+  let range = maxGwei - minGwei;
+  let displayMin = minGwei;
+  let displayMax = maxGwei;
+  
+  if (range < avgGwei * 0.1) {
+    // Less than 10% variation - expand range for visibility
+    const expandedRange = avgGwei * 0.2 || 0.01; // At least 0.01 Gwei range
+    displayMin = avgGwei - expandedRange / 2;
+    displayMax = avgGwei + expandedRange / 2;
+    range = expandedRange;
+  }
 
-  const points = history
-    .slice(0, 20)
-    .reverse()
+  // Create smooth line points with proper scaling
+  const points = data
     .map((h, i) => {
-      const x = (i / 19) * 100;
-      const y = 100 - ((h.gwei - minGwei) / range) * 80 - 10;
-      return `${x},${y}`;
+      const x = (i / Math.max(data.length - 1, 1)) * 100;
+      // Scale Y from 10 to 90 (leaving padding at top/bottom)
+      const normalizedY = (h.gwei - displayMin) / range;
+      const y = 90 - normalizedY * 80; // Inverted Y axis, 10-90 range
+      return `${x.toFixed(1)},${Math.max(10, Math.min(90, y)).toFixed(1)}`;
     })
     .join(" ");
 
+  // Create area fill points
+  const firstPoint = points.split(" ")[0];
+  const lastPoint = points.split(" ").pop();
+  const areaPoints = `${firstPoint?.split(",")[0] || 0},95 ${points} ${lastPoint?.split(",")[0] || 100},95`;
+
+  // Determine color based on trend
+  const latestGwei = data[data.length - 1]?.gwei || 0;
+  const previousGwei = data[data.length - 2]?.gwei || latestGwei;
+  const changePercent = previousGwei > 0 ? ((latestGwei - previousGwei) / previousGwei) * 100 : 0;
+  
+  // Only show color change if > 1% difference
+  const isRising = changePercent > 1;
+  const isFalling = changePercent < -1;
+  
+  const lineColor = isRising ? "text-red-500" : isFalling ? "text-green-500" : "text-blue-500";
+  const fillColor = isRising ? "text-red-50" : isFalling ? "text-green-50" : "text-blue-50";
+
   return (
-    <div className="mt-2">
-      <svg viewBox="0 0 100 50" className="w-full h-12">
-        <polyline
-          fill="none"
-          stroke="currentColor"
-          strokeWidth="1.5"
-          className="text-blue-500"
-          points={points}
-        />
-      </svg>
-      <div className="flex justify-between text-xs text-gray-400">
-        <span>{history.length > 0 ? `${Math.round(minGwei)}` : "-"}</span>
-        <span>Gwei</span>
-        <span>{history.length > 0 ? `${Math.round(maxGwei)}` : "-"}</span>
+    <div className="mt-3 bg-gray-50 rounded-lg p-3">
+      <div className="flex justify-between items-center mb-2">
+        <span className="text-xs text-gray-500">Gas History</span>
+        <span className="text-xs text-gray-400">{data.length} readings</span>
+      </div>
+      <div className="relative bg-white rounded border border-gray-100">
+        <svg viewBox="0 0 100 100" className="w-full h-20" preserveAspectRatio="none">
+          {/* Background grid */}
+          <rect x="0" y="0" width="100" height="100" fill="#fafafa" />
+          
+          {/* Grid lines */}
+          <line x1="0" y1="25" x2="100" y2="25" stroke="#e5e7eb" strokeWidth="0.3" />
+          <line x1="0" y1="50" x2="100" y2="50" stroke="#e5e7eb" strokeWidth="0.3" />
+          <line x1="0" y1="75" x2="100" y2="75" stroke="#e5e7eb" strokeWidth="0.3" />
+          
+          {/* Vertical grid */}
+          <line x1="25" y1="0" x2="25" y2="100" stroke="#e5e7eb" strokeWidth="0.3" />
+          <line x1="50" y1="0" x2="50" y2="100" stroke="#e5e7eb" strokeWidth="0.3" />
+          <line x1="75" y1="0" x2="75" y2="100" stroke="#e5e7eb" strokeWidth="0.3" />
+          
+          {/* Area fill */}
+          <polygon
+            fill="currentColor"
+            className={fillColor}
+            points={areaPoints}
+          />
+          
+          {/* Line */}
+          <polyline
+            fill="none"
+            stroke="currentColor"
+            strokeWidth="2.5"
+            strokeLinecap="round"
+            strokeLinejoin="round"
+            className={lineColor}
+            points={points}
+          />
+          
+          {/* Data points */}
+          {data.map((h, i) => {
+            const x = (i / Math.max(data.length - 1, 1)) * 100;
+            const normalizedY = (h.gwei - displayMin) / range;
+            const y = 90 - normalizedY * 80;
+            return (
+              <circle
+                key={i}
+                cx={x}
+                cy={Math.max(10, Math.min(90, y))}
+                r={i === data.length - 1 ? "4" : "2"}
+                fill="currentColor"
+                className={i === data.length - 1 ? lineColor : "text-gray-300"}
+              />
+            );
+          })}
+        </svg>
+      </div>
+      <div className="flex justify-between text-xs mt-1">
+        <span className="text-gray-400">
+          Min: {formatGasPrice(minGwei)}
+        </span>
+        <span className="text-gray-500 font-medium">
+          {formatGasPrice(latestGwei)} Gwei
+        </span>
+        <span className="text-gray-400">
+          Max: {formatGasPrice(maxGwei)}
+        </span>
       </div>
     </div>
   );
@@ -254,6 +357,79 @@ function ConnectionLostBanner({
 }
 
 // =============================================================================
+// Network Selector Component
+// =============================================================================
+
+function NetworkSelector({
+  currentNetwork,
+  availableNetworks,
+  onSelect,
+  disabled,
+}: {
+  currentNetwork: { id: string; name: string; isTestnet: boolean } | null;
+  availableNetworks: Array<{ id: string; name: string; isTestnet: boolean }>;
+  onSelect: (networkId: string) => void;
+  disabled?: boolean;
+}) {
+  const [isOpen, setIsOpen] = useState(false);
+
+  return (
+    <div className="relative">
+      <button
+        onClick={() => setIsOpen(!isOpen)}
+        disabled={disabled}
+        className={`flex items-center gap-2 px-3 py-1.5 rounded-lg border transition-colors ${
+          disabled
+            ? "bg-gray-100 text-gray-400 cursor-not-allowed"
+            : "bg-white hover:bg-gray-50 border-gray-200"
+        }`}
+      >
+        <Globe className="h-4 w-4 text-blue-500" />
+        <span className="text-sm font-medium">
+          {currentNetwork?.name || "Select Network"}
+        </span>
+        {currentNetwork?.isTestnet && (
+          <span className="text-xs px-1.5 py-0.5 bg-yellow-100 text-yellow-700 rounded">
+            Testnet
+          </span>
+        )}
+        <ChevronDown className={`h-4 w-4 transition-transform ${isOpen ? "rotate-180" : ""}`} />
+      </button>
+
+      {isOpen && (
+        <>
+          <div
+            className="fixed inset-0 z-10"
+            onClick={() => setIsOpen(false)}
+          />
+          <div className="absolute top-full left-0 mt-1 w-56 bg-white rounded-lg shadow-lg border border-gray-200 z-20 py-1 max-h-64 overflow-y-auto">
+            {availableNetworks.map((network) => (
+              <button
+                key={network.id}
+                onClick={() => {
+                  onSelect(network.id);
+                  setIsOpen(false);
+                }}
+                className={`w-full px-3 py-2 text-left hover:bg-gray-50 flex items-center justify-between ${
+                  network.id === currentNetwork?.id ? "bg-blue-50" : ""
+                }`}
+              >
+                <span className="text-sm">{network.name}</span>
+                {network.isTestnet && (
+                  <span className="text-xs px-1.5 py-0.5 bg-yellow-100 text-yellow-700 rounded">
+                    Test
+                  </span>
+                )}
+              </button>
+            ))}
+          </div>
+        </>
+      )}
+    </div>
+  );
+}
+
+// =============================================================================
 // Main Component
 // =============================================================================
 
@@ -270,6 +446,10 @@ export function RealtimePanel({ className = "", compact = false }: RealtimePanel
     isConnected,
     connectionStatus,
     error,
+    networkId,
+    network,
+    availableNetworks,
+    switchNetwork,
     latestBlock,
     gasInfo,
     recentTransactions,
@@ -279,6 +459,7 @@ export function RealtimePanel({ className = "", compact = false }: RealtimePanel
     lastEventTime,
     reconnect,
   } = useRealtimeBlockchain({
+    networkId: 'linea-sepolia', // Default to testnet to avoid rate limits
     watchAddress: address,
     enabled: isClient,
   });
@@ -338,9 +519,15 @@ export function RealtimePanel({ className = "", compact = false }: RealtimePanel
         {/* Header */}
         <div className="px-6 py-4 border-b border-gray-100 bg-gray-50">
           <div className="flex items-center justify-between">
-            <div className="flex items-center gap-2">
+            <div className="flex items-center gap-3">
               <Activity className="h-5 w-5 text-blue-600" />
               <h3 className="font-semibold text-gray-900">Real-Time Network</h3>
+              <NetworkSelector
+                currentNetwork={network}
+                availableNetworks={availableNetworks}
+                onSelect={switchNetwork}
+                disabled={connectionStatus === 'reconnecting'}
+              />
             </div>
             <ConnectionStatus status={connectionStatus} onReconnect={reconnect} />
           </div>

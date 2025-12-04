@@ -12,6 +12,9 @@
 // Types
 export * from './types';
 
+// Networks
+export * from './networks';
+
 // Service
 export { 
   BlockchainRealtimeService, 

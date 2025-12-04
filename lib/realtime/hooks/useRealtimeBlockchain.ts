@@ -15,17 +15,20 @@ import type {
   GasEvent, 
   TransactionEvent 
 } from '../types';
+import { SUPPORTED_NETWORKS, type NetworkConfig } from '../networks';
 
 // =============================================================================
 // Types
 // =============================================================================
 
 interface UseRealtimeBlockchainOptions {
+  networkId?: string;
   watchAddress?: string;
   enabled?: boolean;
   onBlock?: (event: BlockEvent) => void;
   onGasUpdate?: (event: GasEvent) => void;
   onTransaction?: (event: TransactionEvent) => void;
+  onNetworkChange?: (network: NetworkConfig) => void;
 }
 
 interface UseRealtimeBlockchainReturn {
@@ -33,6 +36,12 @@ interface UseRealtimeBlockchainReturn {
   isConnected: boolean;
   connectionStatus: 'connected' | 'disconnected' | 'reconnecting' | 'error';
   error: string | null;
+  
+  // Network
+  networkId: string;
+  network: NetworkConfig | null;
+  availableNetworks: NetworkConfig[];
+  switchNetwork: (networkId: string) => void;
   
   // Data
   latestBlock: RealtimeState['latestBlock'];
@@ -65,14 +74,20 @@ export function useRealtimeBlockchain(
   options: UseRealtimeBlockchainOptions = {}
 ): UseRealtimeBlockchainReturn {
   const { 
+    networkId: initialNetworkId = 'linea-sepolia',
     watchAddress, 
     enabled = true,
     onBlock,
     onGasUpdate,
     onTransaction,
+    onNetworkChange,
   } = options;
 
-  // State
+  // Network state
+  const [networkId, setNetworkId] = useState(initialNetworkId);
+  const network = SUPPORTED_NETWORKS.find(n => n.id === networkId) || null;
+
+  // Connection state
   const [connectionStatus, setConnectionStatus] = useState<'connected' | 'disconnected' | 'reconnecting' | 'error'>('disconnected');
   const [error, setError] = useState<string | null>(null);
   const [latestBlock, setLatestBlock] = useState<RealtimeState['latestBlock']>(null);
@@ -94,12 +109,45 @@ export function useRealtimeBlockchain(
   const onBlockRef = useRef(onBlock);
   const onGasUpdateRef = useRef(onGasUpdate);
   const onTransactionRef = useRef(onTransaction);
+  const onNetworkChangeRef = useRef(onNetworkChange);
   
   useEffect(() => {
     onBlockRef.current = onBlock;
     onGasUpdateRef.current = onGasUpdate;
     onTransactionRef.current = onTransaction;
-  }, [onBlock, onGasUpdate, onTransaction]);
+    onNetworkChangeRef.current = onNetworkChange;
+  }, [onBlock, onGasUpdate, onTransaction, onNetworkChange]);
+
+  // Switch network handler
+  const switchNetwork = useCallback((newNetworkId: string) => {
+    const newNetwork = SUPPORTED_NETWORKS.find(n => n.id === newNetworkId);
+    if (!newNetwork) {
+      console.error(`Unknown network: ${newNetworkId}`);
+      return;
+    }
+
+    // Close existing connection
+    if (eventSourceRef.current) {
+      eventSourceRef.current.close();
+      eventSourceRef.current = null;
+    }
+
+    // Reset state
+    setLatestBlock(null);
+    setGasInfo(null);
+    setPendingTransactions([]);
+    setRecentTransactions([]);
+    setBlocksReceived(0);
+    setEventsReceived(0);
+    setUptime(0);
+    setError(null);
+    startTimeRef.current = Date.now();
+    reconnectAttemptsRef.current = 0;
+
+    // Update network
+    setNetworkId(newNetworkId);
+    onNetworkChangeRef.current?.(newNetwork);
+  }, []);
 
   // ===========================================================================
   // Event Handlers
@@ -160,14 +208,20 @@ export function useRealtimeBlockchain(
   // ===========================================================================
 
   const connect = useCallback(() => {
+    console.log(`[useRealtimeBlockchain] Connecting to network: ${networkId}`);
+    
     if (eventSourceRef.current) {
+      console.log('[useRealtimeBlockchain] Closing existing connection');
       eventSourceRef.current.close();
     }
 
     const url = new URL('/api/realtime/stream', window.location.origin);
+    url.searchParams.set('network', networkId);
     if (watchAddress) {
       url.searchParams.set('address', watchAddress);
     }
+    
+    console.log(`[useRealtimeBlockchain] SSE URL: ${url.toString()}`);
 
     setConnectionStatus('reconnecting');
     setError(null);
@@ -234,7 +288,7 @@ export function useRealtimeBlockchain(
       }
     });
 
-  }, [watchAddress, handleEvent]);
+  }, [networkId, watchAddress, handleEvent]);
 
   const reconnect = useCallback(() => {
     reconnectAttemptsRef.current = 0;
@@ -284,6 +338,14 @@ export function useRealtimeBlockchain(
     };
   }, [connectionStatus]);
 
+  // Reconnect when network changes
+  useEffect(() => {
+    if (enabled) {
+      connect();
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [networkId]);
+
   // ===========================================================================
   // Return
   // ===========================================================================
@@ -292,6 +354,10 @@ export function useRealtimeBlockchain(
     isConnected: connectionStatus === 'connected',
     connectionStatus,
     error,
+    networkId,
+    network,
+    availableNetworks: SUPPORTED_NETWORKS,
+    switchNetwork,
     latestBlock,
     gasInfo,
     pendingTransactions,

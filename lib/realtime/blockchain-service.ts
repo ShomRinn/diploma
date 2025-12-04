@@ -10,8 +10,7 @@
  * Target Latency: 1-5 seconds (justified by block time ~12s on Ethereum/Linea)
  */
 
-import { createPublicClient, http, webSocket, formatGwei, formatEther } from 'viem';
-import { lineaSepolia, mainnet } from 'viem/chains';
+import { createPublicClient, http, formatGwei, formatEther, Chain } from 'viem';
 import {
   RealtimeEvent,
   RealtimeState,
@@ -22,12 +21,31 @@ import {
   TransactionEvent,
   ConnectionEvent,
 } from './types';
+import { NetworkConfig, DEFAULT_NETWORK, getNetworkById } from './networks';
 
 // =============================================================================
 // Event Emitter Type
 // =============================================================================
 
 type EventCallback = (event: RealtimeEvent) => void;
+
+// =============================================================================
+// Helper: Create chain config from NetworkConfig
+// =============================================================================
+
+function createChainFromNetwork(network: NetworkConfig): Chain {
+  return {
+    id: network.chainId,
+    name: network.name,
+    nativeCurrency: network.nativeCurrency,
+    rpcUrls: {
+      default: { http: [network.rpcUrl] },
+    },
+    blockExplorers: {
+      default: { name: 'Explorer', url: network.blockExplorer },
+    },
+  };
+}
 
 // =============================================================================
 // Blockchain Service Class
@@ -38,19 +56,24 @@ export class BlockchainRealtimeService {
   private client: ReturnType<typeof createPublicClient>;
   private listeners: Set<EventCallback> = new Set();
   private state: RealtimeState;
-  private unwatchBlock: (() => void) | null = null;
   private gasInterval: NodeJS.Timeout | null = null;
   private startTime: number = Date.now();
   private lastGasPrice: number = 0;
   private isRunning: boolean = false;
+  private currentNetwork: NetworkConfig;
 
   constructor(config: Partial<RealtimeConfig> = {}) {
     this.config = { ...DEFAULT_CONFIG, ...config };
     
+    // Get network config
+    this.currentNetwork = config.networkId 
+      ? getNetworkById(config.networkId) || DEFAULT_NETWORK
+      : DEFAULT_NETWORK;
+    
     // Initialize viem client
     this.client = createPublicClient({
-      chain: lineaSepolia,
-      transport: http(this.config.rpcUrl),
+      chain: createChainFromNetwork(this.currentNetwork),
+      transport: http(this.currentNetwork.rpcUrl),
     });
 
     // Initialize state
@@ -65,7 +88,70 @@ export class BlockchainRealtimeService {
       blocksReceived: 0,
       eventsReceived: 0,
       uptime: 0,
+      networkId: this.currentNetwork.id,
     };
+  }
+
+  // ===========================================================================
+  // Network Management
+  // ===========================================================================
+
+  /**
+   * Switch to a different network
+   */
+  async switchNetwork(networkId: string): Promise<void> {
+    const network = getNetworkById(networkId);
+    if (!network) {
+      throw new Error(`Unknown network: ${networkId}`);
+    }
+
+    // Stop current watchers
+    const wasRunning = this.isRunning;
+    if (wasRunning) {
+      this.stop();
+    }
+
+    // Update network
+    this.currentNetwork = network;
+    this.client = createPublicClient({
+      chain: createChainFromNetwork(network),
+      transport: http(network.rpcUrl),
+    });
+
+    // Reset state
+    this.state = {
+      ...this.state,
+      connectionStatus: 'disconnected',
+      lastEventTime: null,
+      latestBlock: null,
+      gasInfo: null,
+      blocksReceived: 0,
+      eventsReceived: 0,
+      networkId: network.id,
+    };
+    this.lastGasPrice = 0;
+
+    // Emit network change event
+    this.emit({
+      type: 'connection',
+      timestamp: Date.now(),
+      data: {
+        status: 'disconnected',
+        message: `Switched to ${network.name}`,
+      },
+    });
+
+    // Restart if was running
+    if (wasRunning) {
+      await this.start();
+    }
+  }
+
+  /**
+   * Get current network
+   */
+  getCurrentNetwork(): NetworkConfig {
+    return this.currentNetwork;
   }
 
   // ===========================================================================
@@ -80,36 +166,153 @@ export class BlockchainRealtimeService {
     
     this.isRunning = true;
     this.startTime = Date.now();
-    this.emitConnectionEvent('connected');
+    
+    console.log(`[RealtimeService] Starting for network: ${this.currentNetwork.name}`);
+    console.log(`[RealtimeService] RPC URL: ${this.currentNetwork.rpcUrl}`);
 
     try {
-      // Start watching blocks
+      // Fetch initial block immediately to verify connection
+      console.log('[RealtimeService] Fetching initial block...');
+      await this.fetchInitialBlock();
+      
+      // Fetch initial gas price
+      console.log('[RealtimeService] Fetching initial gas price...');
+      await this.fetchGasPrice();
+      
+      this.emitConnectionEvent('connected');
+
+      // Start watching blocks (polling mode for HTTP RPCs)
       if (this.config.watchBlocks) {
-        await this.startBlockWatcher();
+        this.startBlockPolling();
       }
 
-      // Start gas price polling (every 12 seconds - each block)
+      // Start gas price polling (every 12 seconds)
       if (this.config.watchGas) {
-        await this.fetchGasPrice(); // Initial fetch
         this.gasInterval = setInterval(() => this.fetchGasPrice(), 12000);
       }
 
     } catch (error) {
       console.error('[RealtimeService] Failed to start:', error);
-      this.emitConnectionEvent('error', 'Failed to connect to blockchain');
+      this.emitConnectionEvent('error', `Failed to connect: ${error instanceof Error ? error.message : 'Unknown error'}`);
     }
+  }
+
+  /**
+   * Fetch initial block to verify connection and get initial data
+   */
+  private async fetchInitialBlock(): Promise<void> {
+    try {
+      const block = await this.client.getBlock({ blockTag: 'latest' });
+      console.log(`[RealtimeService] Got block #${block.number}`);
+      
+      this.state.blocksReceived++;
+      this.state.eventsReceived++;
+      this.state.lastEventTime = Date.now();
+
+      // Update state
+      this.state.latestBlock = {
+        number: block.number,
+        hash: block.hash,
+        timestamp: block.timestamp,
+        transactionCount: block.transactions.length,
+      };
+
+      // Emit block event
+      const blockEvent: BlockEvent = {
+        type: 'block',
+        timestamp: Date.now(),
+        data: {
+          number: block.number,
+          hash: block.hash,
+          parentHash: block.parentHash,
+          timestamp: block.timestamp,
+          gasUsed: block.gasUsed,
+          gasLimit: block.gasLimit,
+          baseFeePerGas: block.baseFeePerGas ?? null,
+          transactionCount: block.transactions.length,
+        },
+      };
+      this.emit(blockEvent);
+      
+    } catch (error) {
+      console.error('[RealtimeService] Failed to fetch initial block:', error);
+      throw error;
+    }
+  }
+
+  /**
+   * Start polling for new blocks (more reliable than WebSocket for public RPCs)
+   */
+  private startBlockPolling(): void {
+    const pollInterval = Math.max(this.currentNetwork.avgBlockTime * 1000, 2000); // At least 2 seconds
+    console.log(`[RealtimeService] Starting block polling every ${pollInterval}ms`);
+    
+    let lastBlockNumber = this.state.latestBlock?.number || BigInt(0);
+
+    const pollBlocks = async () => {
+      if (!this.isRunning) return;
+      
+      try {
+        const block = await this.client.getBlock({ blockTag: 'latest' });
+        
+        // Only emit if new block
+        if (block.number > lastBlockNumber) {
+          lastBlockNumber = block.number;
+          
+          this.state.blocksReceived++;
+          this.state.eventsReceived++;
+          this.state.lastEventTime = Date.now();
+
+          // Update state
+          this.state.latestBlock = {
+            number: block.number,
+            hash: block.hash,
+            timestamp: block.timestamp,
+            transactionCount: block.transactions.length,
+          };
+
+          // Emit block event
+          const blockEvent: BlockEvent = {
+            type: 'block',
+            timestamp: Date.now(),
+            data: {
+              number: block.number,
+              hash: block.hash,
+              parentHash: block.parentHash,
+              timestamp: block.timestamp,
+              gasUsed: block.gasUsed,
+              gasLimit: block.gasLimit,
+              baseFeePerGas: block.baseFeePerGas ?? null,
+              transactionCount: block.transactions.length,
+            },
+          };
+          this.emit(blockEvent);
+
+          // Check for user transactions
+          if (this.state.watchedAddress) {
+            await this.checkBlockForTransactions(block);
+          }
+        }
+      } catch (error) {
+        console.error('[RealtimeService] Block polling error:', error);
+      }
+
+      // Schedule next poll
+      if (this.isRunning) {
+        setTimeout(pollBlocks, pollInterval);
+      }
+    };
+
+    // Start polling after initial delay
+    setTimeout(pollBlocks, pollInterval);
   }
 
   /**
    * Stop the real-time service
    */
   stop(): void {
+    console.log(`[RealtimeService] Stopping service for ${this.currentNetwork.name}`);
     this.isRunning = false;
-    
-    if (this.unwatchBlock) {
-      this.unwatchBlock();
-      this.unwatchBlock = null;
-    }
     
     if (this.gasInterval) {
       clearInterval(this.gasInterval);
@@ -147,59 +350,8 @@ export class BlockchainRealtimeService {
   }
 
   // ===========================================================================
-  // Private Methods - Block Watching
+  // Private Methods - Transaction Checking
   // ===========================================================================
-
-  private async startBlockWatcher(): Promise<void> {
-    try {
-      this.unwatchBlock = this.client.watchBlocks({
-        onBlock: async (block) => {
-          this.state.blocksReceived++;
-          this.state.eventsReceived++;
-          this.state.lastEventTime = Date.now();
-
-          // Create block event
-          const blockEvent: BlockEvent = {
-            type: 'block',
-            timestamp: Date.now(),
-            data: {
-              number: block.number,
-              hash: block.hash,
-              parentHash: block.parentHash,
-              timestamp: block.timestamp,
-              gasUsed: block.gasUsed,
-              gasLimit: block.gasLimit,
-              baseFeePerGas: block.baseFeePerGas ?? null,
-              transactionCount: block.transactions.length,
-            },
-          };
-
-          // Update state
-          this.state.latestBlock = {
-            number: block.number,
-            hash: block.hash,
-            timestamp: block.timestamp,
-            transactionCount: block.transactions.length,
-          };
-
-          // Emit event
-          this.emit(blockEvent);
-
-          // Check for user transactions if watching an address
-          if (this.state.watchedAddress) {
-            await this.checkBlockForTransactions(block);
-          }
-        },
-        onError: (error) => {
-          console.error('[RealtimeService] Block watcher error:', error);
-          this.emitConnectionEvent('error', error.message);
-        },
-      });
-    } catch (error) {
-      console.error('[RealtimeService] Failed to start block watcher:', error);
-      throw error;
-    }
-  }
 
   private async checkBlockForTransactions(block: any): Promise<void> {
     if (!this.state.watchedAddress) return;
@@ -385,22 +537,34 @@ export class BlockchainRealtimeService {
 }
 
 // =============================================================================
-// Singleton Instance
+// Service Instances (one per network)
 // =============================================================================
 
-let serviceInstance: BlockchainRealtimeService | null = null;
+const serviceInstances: Map<string, BlockchainRealtimeService> = new Map();
 
 export function getRealtimeService(config?: Partial<RealtimeConfig>): BlockchainRealtimeService {
-  if (!serviceInstance) {
-    serviceInstance = new BlockchainRealtimeService(config);
+  const networkId = config?.networkId || 'ethereum';
+  
+  let service = serviceInstances.get(networkId);
+  if (!service) {
+    service = new BlockchainRealtimeService({ ...config, networkId });
+    serviceInstances.set(networkId, service);
   }
-  return serviceInstance;
+  
+  return service;
 }
 
-export function resetRealtimeService(): void {
-  if (serviceInstance) {
-    serviceInstance.stop();
-    serviceInstance = null;
+export function resetRealtimeService(networkId?: string): void {
+  if (networkId) {
+    const service = serviceInstances.get(networkId);
+    if (service) {
+      service.stop();
+      serviceInstances.delete(networkId);
+    }
+  } else {
+    // Reset all
+    serviceInstances.forEach((service) => service.stop());
+    serviceInstances.clear();
   }
 }
 

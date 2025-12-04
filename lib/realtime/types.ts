@@ -149,6 +149,9 @@ export interface RealtimeState {
   blocksReceived: number;
   eventsReceived: number;
   uptime: number; // seconds
+  
+  // Network
+  networkId?: string;
 }
 
 // =============================================================================
@@ -156,8 +159,9 @@ export interface RealtimeState {
 // =============================================================================
 
 export interface RealtimeConfig {
-  // RPC endpoint
-  rpcUrl: string;
+  // Network
+  networkId?: string;           // Network to connect to (see networks.ts)
+  rpcUrl?: string;              // Override RPC URL (optional)
   
   // What to watch
   watchBlocks: boolean;
@@ -172,7 +176,7 @@ export interface RealtimeConfig {
 }
 
 export const DEFAULT_CONFIG: RealtimeConfig = {
-  rpcUrl: process.env.NEXT_PUBLIC_RPC_URL || 'https://rpc.sepolia.linea.build',
+  networkId: 'ethereum',        // Default to Ethereum mainnet for real activity
   watchBlocks: true,
   watchGas: true,
   gasHistoryLength: 30,          // ~6 minutes of data
