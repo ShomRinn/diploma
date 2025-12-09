@@ -4,6 +4,7 @@
  */
 
 import { generateUUID, hashPassword, verifyPassword, hashData, generateToken } from './encryption';
+import { createSignedJWT } from '../jwt';
 import * as db from './indexeddb/service';
 import type { User, AuthSession, RegistrationRequest, LoginRequest } from './types';
 import {
@@ -20,24 +21,14 @@ const EMAIL_TOKEN_EXPIRY = 24 * 60 * 60 * 1000; // 24 hours
 const PASSWORD_RESET_EXPIRY = 1 * 60 * 60 * 1000; // 1 hour
 
 /**
- * Create JWT token (this is a mock - in production you'd use a JWT library)
+ * Create JWT token with proper signing
  */
 function createJWTToken(userId: string, email: string): {
   token: string;
   expiresAt: number;
 } {
   const expiresAt = Date.now() + JWT_EXPIRY;
-  const tokenData = {
-    userId,
-    email,
-    role: 'user',
-    iat: Date.now(),
-    exp: expiresAt,
-  };
-
-  // In production, this would be a real JWT signed token
-  // For now, we'll use base64 encoding
-  const token = Buffer.from(JSON.stringify(tokenData)).toString('base64');
+  const token = createSignedJWT({ userId, email, role: 'user' }, JWT_EXPIRY);
 
   return { token, expiresAt };
 }

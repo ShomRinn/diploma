@@ -5,10 +5,13 @@ import { z } from "zod";
  * Resolve a contact name to their Ethereum address
  * This tool finds a contact by name and returns their address
  * Usage: User says "Send 0.1 ETH to Nikita" -> AI uses this to find Nikita's address -> returns address
+ *
+ * Note: The contacts list is passed via the system prompt, so the AI includes it
+ * when calling this tool.
  */
 export const resolveContactAddressTool = createTool({
   description:
-    "Resolve a contact name to their Ethereum address from saved contacts. Returns the address so you can send money to them. Example: User says 'Send to Alice' -> you use this tool to get Alice's address -> use sendTransaction with that address.",
+    "Resolve a contact name to their Ethereum address from your saved contacts. Returns the address so you can send money to them. Example: User says 'Send to Alice' -> you use this tool to get Alice's address -> use sendTransaction with that address.",
   parameters: z.object({
     contactName: z.string().describe("The name of the contact to find (e.g., 'Nikita', 'Alice', 'Bob')"),
     contacts: z.array(z.object({
@@ -17,12 +20,21 @@ export const resolveContactAddressTool = createTool({
       address: z.string(),
       ensName: z.string().optional(),
       tags: z.array(z.string()).optional(),
-    })).describe("Array of saved contacts to search through"),
+    })).optional().describe("Array of saved contacts to search through (provided via system context)"),
   }),
-  execute: async ({ contactName, contacts }) => {
+  execute: async ({ contactName, contacts: contactsList }) => {
     try {
+      // If no contacts provided, return error asking for them
+      if (!contactsList || contactsList.length === 0) {
+        return {
+          status: "no_contacts",
+          error: "No contacts provided",
+          message: "Please save some contacts first before trying to send money by name",
+        };
+      }
+
       // Find contact by name (case-insensitive, exact match first)
-      const exactMatch = contacts.find(
+      const exactMatch = contactsList.find(
         (c) => c.name.toLowerCase() === contactName.toLowerCase()
       );
 
@@ -37,7 +49,7 @@ export const resolveContactAddressTool = createTool({
       }
 
       // Try partial match if no exact match
-      const partialMatch = contacts.find((c) =>
+      const partialMatch = contactsList.find((c) =>
         c.name.toLowerCase().includes(contactName.toLowerCase())
       );
 
@@ -55,8 +67,8 @@ export const resolveContactAddressTool = createTool({
       return {
         status: "not_found",
         error: `Contact "${contactName}" not found`,
-        suggestions: contacts.slice(0, 5).map(c => c.name).join(", "),
-        message: `I couldn't find a contact named "${contactName}". Available contacts: ${contacts.map(c => c.name).join(", ")}`,
+        suggestions: contactsList.slice(0, 5).map(c => c.name).join(", "),
+        message: `I couldn't find a contact named "${contactName}". Available contacts: ${contactsList.map(c => c.name).join(", ")}`,
       };
     } catch (error) {
       console.error("Resolve contact address error:", error);
@@ -81,11 +93,11 @@ export const listContactsTool = createTool({
       name: z.string(),
       address: z.string(),
       ensName: z.string().optional(),
-    })).describe("Array of saved contacts"),
+    })).optional().describe("Array of saved contacts (provided via system context)"),
   }),
-  execute: async ({ contacts }) => {
+  execute: async ({ contacts: contactsList }) => {
     try {
-      if (contacts.length === 0) {
+      if (!contactsList || contactsList.length === 0) {
         return {
           status: "empty",
           message: "No contacts saved yet",
@@ -95,13 +107,13 @@ export const listContactsTool = createTool({
 
       return {
         status: "success",
-        count: contacts.length,
-        contacts: contacts.map(c => ({
+        count: contactsList.length,
+        contacts: contactsList.map(c => ({
           name: c.name,
           address: c.address.substring(0, 6) + "..." + c.address.substring(c.address.length - 4),
           ensName: c.ensName,
         })),
-        message: `You have ${contacts.length} saved contacts: ${contacts.map(c => c.name).join(", ")}`,
+        message: `You have ${contactsList.length} saved contacts: ${contactsList.map(c => c.name).join(", ")}`,
       };
     } catch (error) {
       console.error("List contacts error:", error);

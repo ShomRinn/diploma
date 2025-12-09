@@ -35,7 +35,7 @@ export async function deriveKey(
   return crypto.subtle.deriveKey(
     {
       name: 'PBKDF2',
-      salt: salt,
+      salt: salt as BufferSource,
       iterations: 100000,
       hash: 'SHA-256',
     },
@@ -116,9 +116,9 @@ export async function decryptData(
 
     // Decrypt data
     const decrypted = await crypto.subtle.decrypt(
-      { name: ALGORITHM, iv },
+      { name: ALGORITHM, iv: iv as BufferSource },
       key,
-      combined
+      combined as BufferSource
     );
 
     // Parse JSON
@@ -200,7 +200,7 @@ export async function verifyPassword(
     const hashBuffer = await crypto.subtle.deriveBits(
       {
         name: 'PBKDF2',
-        salt: salt,
+        salt: salt as BufferSource,
         iterations: 100000,
         hash: 'SHA-256',
       },

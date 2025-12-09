@@ -55,13 +55,15 @@ export default function WelcomePage() {
     // Small delay to ensure state is ready
     const timer = setTimeout(checkAuth, 100);
     return () => clearTimeout(timer);
-  }, [isConnected, router]);
+  }, [router]);
 
   // Don't show login buttons if already authenticated
+  // Only redirect if they have email/password auth (userId + token)
+  // Don't redirect just because MetaMask is connected - they might be logged out
   const userId = typeof window !== 'undefined' ? localStorage.getItem("userId") : null;
   const token = typeof window !== 'undefined' ? localStorage.getItem("token") : null;
 
-  if ((userId && token) || isConnected) {
+  if (userId && token) {
     return null; // Will redirect in useEffect
   }
 

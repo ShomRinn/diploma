@@ -8,7 +8,8 @@
  * @returns Current blockchain state snapshot
  */
 
-import { NextResponse } from 'next/server';
+import { NextRequest, NextResponse } from 'next/server';
+import { verifyAuthHeader, createAuthErrorResponse } from '@/lib/api-auth';
 import { getRealtimeService } from '@/lib/realtime/blockchain-service';
 
 // =============================================================================
@@ -47,9 +48,16 @@ interface StateResponse {
 // Route Handler
 // =============================================================================
 
-export async function GET() {
+export async function GET(request: NextRequest) {
+  // JWT Authentication - Verify token validity
+  const auth = verifyAuthHeader(request);
+  if (!auth) {
+    console.warn('[Realtime State] Request rejected: invalid or missing JWT token');
+    return createAuthErrorResponse('Unauthorized: Invalid or expired JWT token');
+  }
+  console.log('[Realtime State] Request authenticated for user:', auth.userId);
   try {
-    const service = getRealtimeService();
+    const service = getRealtimeService({ networkId: 'ethereum' });
     const state = service.getState();
 
     // Serialize BigInt values

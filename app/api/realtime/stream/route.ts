@@ -17,6 +17,7 @@
  */
 
 import { NextRequest } from 'next/server';
+import { verifyAuthHeader, createAuthErrorResponse } from '@/lib/api-auth';
 import { getRealtimeService } from '@/lib/realtime/blockchain-service';
 import { getNetworkById } from '@/lib/realtime/networks';
 import type { RealtimeEvent } from '@/lib/realtime/types';
@@ -39,7 +40,7 @@ const SSE_HEADERS = {
 function formatSSEMessage(event: RealtimeEvent): string {
   const id = `${event.type}-${event.timestamp}`;
   const data = JSON.stringify(event);
-  
+
   return `id: ${id}\nevent: ${event.type}\ndata: ${data}\n\n`;
 }
 
@@ -58,6 +59,14 @@ function serializeEvent(event: RealtimeEvent): RealtimeEvent {
 // =============================================================================
 
 export async function GET(request: NextRequest) {
+  // JWT Authentication - Verify token validity
+  const auth = verifyAuthHeader(request);
+  if (!auth) {
+    console.warn('[Realtime SSE] Request rejected: invalid or missing JWT token');
+    return createAuthErrorResponse('Unauthorized: Invalid or expired JWT token');
+  }
+  console.log('[Realtime SSE] Request authenticated for user:', auth.userId);
+
   const searchParams = request.nextUrl.searchParams;
   const networkId = searchParams.get('network') || 'ethereum';
   const watchAddress = searchParams.get('address');

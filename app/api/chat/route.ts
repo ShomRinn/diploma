@@ -1,6 +1,7 @@
 import { openai } from "@ai-sdk/openai";
 import { streamText } from "ai";
 import { tools } from "@/ai/tools/index";
+import { verifyAuthHeader, createAuthErrorResponse } from "@/lib/api-auth";
 import {
   // Rate limiting
   checkRateLimit,
@@ -24,7 +25,15 @@ import {
 
 export async function POST(request: Request) {
   const startTime = Date.now();
-  
+
+  // 0. JWT Authentication - Verify token validity
+  const auth = verifyAuthHeader(request);
+  if (!auth) {
+    console.warn('[Chat API] Request rejected: invalid or missing JWT token');
+    return createAuthErrorResponse('Unauthorized: Invalid or expired JWT token');
+  }
+  console.log('[Chat API] Request authenticated for user:', auth.userId);
+
   // 1. Rate limiting
   const clientId = getClientIdentifier(request);
   const rateLimitResult = checkRateLimit(clientId);
@@ -139,36 +148,14 @@ export async function POST(request: Request) {
     const enhancedSystemContent = systemContent + contactsInfo;
 
     // 7. Call AI with timeout handling built into the SDK
-    // Create a tool wrapper that injects contacts into resolveContactAddress tool
-    const toolsWithContacts: any = {};
-    for (const [key, tool] of Object.entries(tools)) {
-      if (key === 'resolveContactAddress' && contacts.length > 0) {
-        // Wrap the tool to automatically inject contacts
-        toolsWithContacts[key] = {
-          ...tool,
-          execute: async (args: any) => {
-            return await tool.execute({ ...args, contacts });
-          },
-        };
-      } else if (key === 'listContacts' && contacts.length > 0) {
-        // Wrap the tool to automatically inject contacts
-        toolsWithContacts[key] = {
-          ...tool,
-          execute: async (args: any) => {
-            return await tool.execute({ ...args, contacts });
-          },
-        };
-      } else {
-        toolsWithContacts[key] = tool;
-      }
-    }
-
+    // Note: Contacts are passed in the system prompt, so AI will include them
+    // in tool calls when needed. We use the tools as-is without wrapping.
     const result = await streamText({
       model: openai("gpt-4o"),
       system: enhancedSystemContent,
-      messages: sanitizedMessages.filter((m: any) => m.role !== "system"),
+      messages: sanitizedMessages.filter((m: any) => m.role !== "system") as any,
       maxSteps: 5,
-      tools: toolsWithContacts,
+      tools: tools as any,
       // Note: Vercel AI SDK handles streaming timeouts internally
       // For additional timeout control, you could wrap this in withTimeout()
       onStepFinish: (step) => {
