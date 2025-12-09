@@ -12,14 +12,44 @@ import {
   TrendingUp,
   TrendingDown,
   ExternalLink,
+  LogOut,
 } from "lucide-react";
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import { RealtimePanel } from "@/components/RealtimePanel";
 
 export default function HomePage() {
+  const router = useRouter();
   const { address } = useAccount();
   const [balance, setBalance] = useState<string>("0");
   const [loading, setLoading] = useState(true);
+  const [userEmail, setUserEmail] = useState<string>("");
+
+  // Get user email from localStorage
+  useEffect(() => {
+    const email = localStorage.getItem("userEmail");
+    if (email) {
+      setUserEmail(email);
+    }
+  }, []);
+
+  // Handle logout
+  const handleLogout = () => {
+    // Clear localStorage
+    localStorage.removeItem("token");
+    localStorage.removeItem("refreshToken");
+    localStorage.removeItem("userId");
+    localStorage.removeItem("userEmail");
+    localStorage.removeItem("walletAddress");
+
+    // Clear cookies
+    document.cookie = 'token=; path=/; max-age=0';
+    document.cookie = 'userId=; path=/; max-age=0';
+    document.cookie = 'userEmail=; path=/; max-age=0';
+    document.cookie = 'walletAddress=; path=/; max-age=0';
+
+    router.push("/welcome");
+  };
 
   useEffect(() => {
     if (address) {
@@ -61,9 +91,21 @@ export default function HomePage() {
   return (
     <div className="space-y-6">
       {/* Header */}
-      <div>
-        <h1 className="text-3xl font-bold text-gray-900">Home</h1>
-        <p className="text-gray-600">Welcome back! Here's your portfolio overview.</p>
+      <div className="flex items-center justify-between">
+        <div>
+          <h1 className="text-3xl font-bold text-gray-900">Home</h1>
+          <p className="text-gray-600">
+            {userEmail ? `Welcome back, ${userEmail}!` : "Welcome back!"}
+          </p>
+        </div>
+        <Button
+          onClick={handleLogout}
+          variant="outline"
+          className="text-red-600 hover:bg-red-50"
+        >
+          <LogOut className="mr-2 h-4 w-4" />
+          Logout
+        </Button>
       </div>
 
       {/* Balance Card */}

@@ -3,6 +3,7 @@
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { type ReactNode, useState } from "react";
 import { type State, WagmiProvider } from "wagmi";
+import { StorageInitializer } from "../components/StorageInitializer";
 
 import { getConfig } from "../wagmi.config";
 
@@ -17,7 +18,10 @@ export function Provider({ children, initialState }: Props) {
 
   return (
     <WagmiProvider config={config} initialState={initialState}>
-      <QueryClientProvider client={queryClient}>{children}</QueryClientProvider>
+      <QueryClientProvider client={queryClient}>
+        <StorageInitializer />
+        {children}
+      </QueryClientProvider>
     </WagmiProvider>
   );
 }

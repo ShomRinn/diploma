@@ -2,10 +2,11 @@
 
 import { useEffect } from "react";
 import { useRouter } from "next/navigation";
+import Link from "next/link";
 import { useConnect, useAccount } from "wagmi";
 import { metaMask } from "wagmi/connectors";
 import { Button } from "@/components/ui/button";
-import { Wallet, Zap, Shield, TrendingUp } from "lucide-react";
+import { Wallet, Zap, Shield, TrendingUp, LogIn, UserPlus } from "lucide-react";
 
 export default function WelcomePage() {
   const router = useRouter();
@@ -13,10 +14,56 @@ export default function WelcomePage() {
   const { isConnected } = useAccount();
 
   useEffect(() => {
-    if (isConnected) {
-      router.push("/dashboard");
-    }
+    const checkAuth = async () => {
+      // Check if user is already logged in via email/password
+      const userId = localStorage.getItem("userId");
+      const token = localStorage.getItem("token");
+      const walletAddress = localStorage.getItem("walletAddress");
+
+      console.log('[Welcome] Auth check - raw values:', {
+        userId,
+        token: token ? token.substring(0, 20) + '...' : null,
+        walletAddress,
+        isConnected,
+        timestamp: new Date().toISOString(),
+      });
+
+      if (userId && token) {
+        console.log('[Welcome] User has email/password auth');
+        // User logged in with email/password
+        // Redirect to wallet connection if no wallet connected yet
+        if (!walletAddress && !isConnected) {
+          console.log('[Welcome] No wallet yet - redirecting to connect-wallet');
+          router.push("/connect-wallet");
+        } else {
+          // Wallet already connected, go to dashboard
+          console.log('[Welcome] Wallet already connected - redirecting to dashboard');
+          router.push("/dashboard");
+        }
+        return;
+      }
+
+      // Check if MetaMask is connected (without email/password login)
+      if (isConnected) {
+        console.log('[Welcome] MetaMask connected without email/password - redirecting to dashboard');
+        router.push("/dashboard");
+      } else {
+        console.log('[Welcome] No authentication detected - showing welcome page');
+      }
+    };
+
+    // Small delay to ensure state is ready
+    const timer = setTimeout(checkAuth, 100);
+    return () => clearTimeout(timer);
   }, [isConnected, router]);
+
+  // Don't show login buttons if already authenticated
+  const userId = typeof window !== 'undefined' ? localStorage.getItem("userId") : null;
+  const token = typeof window !== 'undefined' ? localStorage.getItem("token") : null;
+
+  if ((userId && token) || isConnected) {
+    return null; // Will redirect in useEffect
+  }
 
   const handleConnect = () => {
     connect({ connector: metaMask() });
@@ -77,21 +124,37 @@ export default function WelcomePage() {
               </div>
               <h2 className="text-2xl font-bold mb-2">Get Started</h2>
               <p className="text-gray-600">
-                Connect your wallet to access AI Bank
+                Login to access AI Bank
               </p>
             </div>
 
-            <Button
-              onClick={handleConnect}
-              size="lg"
-              className="w-full bg-gradient-to-r from-blue-600 to-purple-600 hover:from-blue-700 hover:to-purple-700 text-white font-semibold py-6 text-lg"
-            >
-              <Wallet className="mr-2 h-5 w-5" />
-              Connect with MetaMask
-            </Button>
+            <div className="space-y-3">
+              {/* Login Button */}
+              <Link href="/login" className="block">
+                <Button
+                  size="lg"
+                  className="w-full bg-gradient-to-r from-blue-600 to-purple-600 hover:from-blue-700 hover:to-purple-700 text-white font-semibold py-6 text-lg"
+                >
+                  <LogIn className="mr-2 h-5 w-5" />
+                  Login
+                </Button>
+              </Link>
+
+              {/* Register Button */}
+              <Link href="/register" className="block">
+                <Button
+                  size="lg"
+                  variant="outline"
+                  className="w-full border-2 border-gray-300 hover:border-gray-400 text-gray-700 font-semibold py-6 text-lg"
+                >
+                  <UserPlus className="mr-2 h-5 w-5" />
+                  Create Account
+                </Button>
+              </Link>
+            </div>
 
             <p className="text-xs text-gray-500 text-center mt-4">
-              By connecting, you agree to our Terms of Service and Privacy Policy
+              By logging in, you agree to our Terms of Service and Privacy Policy
             </p>
           </div>
         </div>
