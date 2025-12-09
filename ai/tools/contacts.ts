@@ -20,16 +20,16 @@ export const resolveContactAddressTool = createTool({
       address: z.string(),
       ensName: z.string().optional(),
       tags: z.array(z.string()).optional(),
-    })).optional().describe("Array of saved contacts to search through (provided via system context)"),
+    })).describe("Array of saved contacts to search through (injected by API)"),
   }),
   execute: async ({ contactName, contacts: contactsList }) => {
     try {
-      // If no contacts provided, return error asking for them
+      // Contacts are always injected by the API
       if (!contactsList || contactsList.length === 0) {
         return {
           status: "no_contacts",
-          error: "No contacts provided",
-          message: "Please save some contacts first before trying to send money by name",
+          error: "No contacts available",
+          message: "No contacts found. Please save some contacts first.",
         };
       }
 
@@ -93,10 +93,11 @@ export const listContactsTool = createTool({
       name: z.string(),
       address: z.string(),
       ensName: z.string().optional(),
-    })).optional().describe("Array of saved contacts (provided via system context)"),
+    })).describe("Array of saved contacts (injected by API)"),
   }),
   execute: async ({ contacts: contactsList }) => {
     try {
+      // Contacts are always injected by the API
       if (!contactsList || contactsList.length === 0) {
         return {
           status: "empty",

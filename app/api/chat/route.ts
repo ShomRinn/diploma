@@ -147,15 +147,33 @@ export async function POST(request: Request) {
 
     const enhancedSystemContent = systemContent + contactsInfo;
 
-    // 7. Call AI with timeout handling built into the SDK
-    // Note: Contacts are passed in the system prompt, so AI will include them
-    // in tool calls when needed. We use the tools as-is without wrapping.
+    // 7. Create tool wrappers that inject contacts into contact-related tools
+    // This ensures AI always has access to contacts when calling these tools
+    const toolsWithContacts: Record<string, any> = {};
+    for (const [key, tool] of Object.entries(tools)) {
+      if ((key === 'resolveContactAddress' || key === 'listContacts') && contacts.length > 0) {
+        // Wrap the tool's execute function to inject contacts
+        const originalTool = tool as any;
+        toolsWithContacts[key] = {
+          description: originalTool.description,
+          parameters: originalTool.parameters,
+          execute: async (args: Record<string, any>) => {
+            // Always inject contacts into the tool execution
+            return await originalTool.execute({ ...args, contacts });
+          },
+        };
+      } else {
+        toolsWithContacts[key] = tool;
+      }
+    }
+
+    // 8. Call AI with timeout handling built into the SDK
     const result = await streamText({
       model: openai("gpt-4o"),
       system: enhancedSystemContent,
       messages: sanitizedMessages.filter((m: any) => m.role !== "system") as any,
       maxSteps: 5,
-      tools: tools as any,
+      tools: toolsWithContacts as any,
       // Note: Vercel AI SDK handles streaming timeouts internally
       // For additional timeout control, you could wrap this in withTimeout()
       onStepFinish: (step) => {
