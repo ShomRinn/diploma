@@ -17,12 +17,27 @@ interface ChatProps {
 
 export const Chat = ({ initialMessages, onMessagesChange, initialCommand }: ChatProps) => {
   const { address } = useAccount();
+  const [contacts, setContacts] = useState<any[]>([]);
+
+  // Load contacts from localStorage
+  useEffect(() => {
+    try {
+      const savedContacts = localStorage.getItem("wallet-agent-contacts");
+      if (savedContacts) {
+        setContacts(JSON.parse(savedContacts));
+      }
+    } catch (error) {
+      console.error("Failed to load contacts:", error);
+    }
+  }, []);
+
   const { messages, input, handleInputChange, handleSubmit, isLoading, setMessages, setInput } =
     useChat({
       api: '/api/chat',
       initialMessages,
       body: {
         address, // Include address in the request
+        contacts, // Include user's contacts so AI can resolve contact names to addresses
       },
     });
 

@@ -49,9 +49,11 @@ export async function POST(request: Request) {
   
   // 2. Parse request body
   let rawMessages: any;
+  let contacts: any[] = [];
   try {
     const body = await request.json();
     rawMessages = body.messages;
+    contacts = body.contacts || [];
   } catch (error) {
     console.error('[Chat API] Failed to parse request body:', error);
     return new Response(
@@ -127,14 +129,46 @@ export async function POST(request: Request) {
 
     console.log('[Chat API] Processing', sanitizedMessages.filter((m: any) => m.role !== "system").length, 'non-system messages');
     console.log('[Chat API] Available tools:', Object.keys(tools).length);
+    console.log('[Chat API] Contacts available:', contacts.length);
+
+    // Create enhanced system prompt with contact information
+    const contactsInfo = contacts.length > 0
+      ? `\n\nYou have access to the user's saved contacts: ${contacts.map(c => `${c.name} (${c.address})`).join(", ")}. When the user asks to send money to a contact by name, use the resolveContactAddress tool to get their address, then use sendTransaction.`
+      : "";
+
+    const enhancedSystemContent = systemContent + contactsInfo;
 
     // 7. Call AI with timeout handling built into the SDK
+    // Create a tool wrapper that injects contacts into resolveContactAddress tool
+    const toolsWithContacts: any = {};
+    for (const [key, tool] of Object.entries(tools)) {
+      if (key === 'resolveContactAddress' && contacts.length > 0) {
+        // Wrap the tool to automatically inject contacts
+        toolsWithContacts[key] = {
+          ...tool,
+          execute: async (args: any) => {
+            return await tool.execute({ ...args, contacts });
+          },
+        };
+      } else if (key === 'listContacts' && contacts.length > 0) {
+        // Wrap the tool to automatically inject contacts
+        toolsWithContacts[key] = {
+          ...tool,
+          execute: async (args: any) => {
+            return await tool.execute({ ...args, contacts });
+          },
+        };
+      } else {
+        toolsWithContacts[key] = tool;
+      }
+    }
+
     const result = await streamText({
       model: openai("gpt-4o"),
-      system: systemContent,
+      system: enhancedSystemContent,
       messages: sanitizedMessages.filter((m: any) => m.role !== "system"),
       maxSteps: 5,
-      tools,
+      tools: toolsWithContacts,
       // Note: Vercel AI SDK handles streaming timeouts internally
       // For additional timeout control, you could wrap this in withTimeout()
       onStepFinish: (step) => {

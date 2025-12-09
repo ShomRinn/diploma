@@ -1,75 +1,87 @@
 // Export all tools
 export { balanceTool } from './balance';
-export { 
-  sendTransactionTool, 
+export {
+  sendTransactionTool,
   getTransactionHistoryTool,
-  getTransactionStatusTool 
+  getTransactionStatusTool
 } from './transactions';
-export { 
-  getGasPriceTool, 
-  estimateTransactionCostTool 
+export {
+  getGasPriceTool,
+  estimateTransactionCostTool
 } from './gas';
-export { 
-  getTokenBalanceTool, 
-  sendTokenTool 
+export {
+  getTokenBalanceTool,
+  sendTokenTool
 } from './tokens';
-export { 
-  getCryptoPriceTool, 
+export {
+  getCryptoPriceTool,
   getPortfolioValueTool,
-  getMarketAnalyticsTool 
+  getMarketAnalyticsTool
 } from './prices';
-export { 
-  getBlockInfoTool 
+export {
+  getBlockInfoTool
 } from './blockchain';
+export {
+  listContactsTool,
+  resolveContactAddressTool
+} from './contacts';
 
 // Import all tools
 import { balanceTool } from './balance';
-import { 
-  sendTransactionTool, 
+import {
+  sendTransactionTool,
   getTransactionHistoryTool,
-  getTransactionStatusTool 
+  getTransactionStatusTool
 } from './transactions';
-import { 
-  getGasPriceTool, 
-  estimateTransactionCostTool 
+import {
+  getGasPriceTool,
+  estimateTransactionCostTool
 } from './gas';
-import { 
-  getTokenBalanceTool, 
-  sendTokenTool 
+import {
+  getTokenBalanceTool,
+  sendTokenTool
 } from './tokens';
-import { 
-  getCryptoPriceTool, 
+import {
+  getCryptoPriceTool,
   getPortfolioValueTool,
-  getMarketAnalyticsTool 
+  getMarketAnalyticsTool
 } from './prices';
-import { 
-  getBlockInfoTool 
+import {
+  getBlockInfoTool
 } from './blockchain';
+import {
+  listContactsTool,
+  resolveContactAddressTool
+} from './contacts';
 
 // Export all tools as a collection
 export const tools = {
   // Balance
   displayBalance: balanceTool,
-  
+
   // Transactions
   sendTransaction: sendTransactionTool,
   getTransactionHistory: getTransactionHistoryTool,
   getTransactionStatus: getTransactionStatusTool,
-  
+
   // Gas
   getGasPrice: getGasPriceTool,
   estimateTransactionCost: estimateTransactionCostTool,
-  
+
   // Tokens
   getTokenBalance: getTokenBalanceTool,
   sendToken: sendTokenTool,
-  
+
   // Prices
   getCryptoPrice: getCryptoPriceTool,
   getPortfolioValue: getPortfolioValueTool,
   getMarketAnalytics: getMarketAnalyticsTool,
-  
+
   // Blockchain
   getBlockInfo: getBlockInfoTool,
+
+  // Contacts
+  listContacts: listContactsTool,
+  resolveContactAddress: resolveContactAddressTool,
 };
 
