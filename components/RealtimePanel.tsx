@@ -13,7 +13,7 @@
  * Updates dynamically without page reloads via SSE.
  */
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useMemo, useCallback } from "react";
 import { useAccount } from "wagmi";
 import { useRealtimeBlockchain } from "@/lib/realtime/hooks/useRealtimeBlockchain";
 import {
@@ -49,36 +49,37 @@ interface RealtimePanelProps {
 // Helper Functions
 // =============================================================================
 
-function formatTimeAgo(timestamp: number): string {
+// Memoize formatting functions to avoid recreation
+const formatTimeAgo = (timestamp: number): string => {
   const seconds = Math.floor((Date.now() - timestamp) / 1000);
   if (seconds < 5) return "just now";
   if (seconds < 60) return `${seconds}s ago`;
   const minutes = Math.floor(seconds / 60);
   if (minutes < 60) return `${minutes}m ago`;
   return `${Math.floor(minutes / 60)}h ago`;
-}
+};
 
-function formatUptime(seconds: number): string {
+const formatUptime = (seconds: number): string => {
   if (seconds < 60) return `${seconds}s`;
   const minutes = Math.floor(seconds / 60);
   if (minutes < 60) return `${minutes}m ${seconds % 60}s`;
   const hours = Math.floor(minutes / 60);
   return `${hours}h ${minutes % 60}m`;
-}
+};
 
-function formatGasPrice(gwei: number): string {
+const formatGasPrice = (gwei: number): string => {
   // For L2s with very low gas (< 1 Gwei), show more precision
   if (gwei < 0.01) return gwei.toFixed(4);
   if (gwei < 0.1) return gwei.toFixed(3);
   if (gwei < 1) return gwei.toFixed(2);
   if (gwei < 10) return gwei.toFixed(1);
   return Math.round(gwei).toString();
-}
+};
 
-function formatBlockNumber(num: bigint | undefined): string {
+const formatBlockNumber = (num: bigint | undefined): string => {
   if (!num) return "---";
   return num.toLocaleString();
-}
+};
 
 // =============================================================================
 // Sub-Components
@@ -164,7 +165,61 @@ function NetworkLoadBar({ load }: { load: number }) {
 }
 
 function GasChart({ history }: { history: Array<{ timestamp: number; gwei: number }> }) {
-  if (!history || history.length < 2) {
+  // Memoize chart calculations
+  const chartData = useMemo(() => {
+    if (!history || history.length < 2) return null;
+
+    const data = history.slice(0, 20).reverse();
+    const maxGwei = Math.max(...data.map((h) => h.gwei));
+    const minGwei = Math.min(...data.map((h) => h.gwei));
+    const avgGwei = data.reduce((sum, h) => sum + h.gwei, 0) / data.length;
+  
+    // Calculate range with minimum visual difference
+    // If values are too similar, create artificial range for visibility
+    let range = maxGwei - minGwei;
+    let displayMin = minGwei;
+    let displayMax = maxGwei;
+    
+    if (range < avgGwei * 0.1) {
+      // Less than 10% variation - expand range for visibility
+      const expandedRange = avgGwei * 0.2 || 0.01; // At least 0.01 Gwei range
+      displayMin = avgGwei - expandedRange / 2;
+      displayMax = avgGwei + expandedRange / 2;
+      range = expandedRange;
+    }
+
+    // Create smooth line points with proper scaling
+    const points = data
+      .map((h, i) => {
+        const x = (i / Math.max(data.length - 1, 1)) * 100;
+        // Scale Y from 10 to 90 (leaving padding at top/bottom)
+        const normalizedY = (h.gwei - displayMin) / range;
+        const y = 90 - normalizedY * 80; // Inverted Y axis, 10-90 range
+        return `${x.toFixed(1)},${Math.max(10, Math.min(90, y)).toFixed(1)}`;
+      })
+      .join(" ");
+
+    // Create area fill points
+    const firstPoint = points.split(" ")[0];
+    const lastPoint = points.split(" ").pop();
+    const areaPoints = `${firstPoint?.split(",")[0] || 0},95 ${points} ${lastPoint?.split(",")[0] || 100},95`;
+
+    // Determine color based on trend
+    const latestGwei = data[data.length - 1]?.gwei || 0;
+    const previousGwei = data[data.length - 2]?.gwei || latestGwei;
+    const changePercent = previousGwei > 0 ? ((latestGwei - previousGwei) / previousGwei) * 100 : 0;
+    
+    // Only show color change if > 1% difference
+    const isRising = changePercent > 1;
+    const isFalling = changePercent < -1;
+    
+    const lineColor = isRising ? "text-red-500" : isFalling ? "text-green-500" : "text-blue-500";
+    const fillColor = isRising ? "text-red-50" : isFalling ? "text-green-50" : "text-blue-50";
+
+    return { data, points, areaPoints, lineColor, fillColor, minGwei, maxGwei, latestGwei, displayMin, range };
+  }, [history]);
+
+  if (!chartData) {
     return (
       <div className="mt-3 bg-gray-50 rounded-lg p-3 text-center">
         <p className="text-xs text-gray-400">Collecting data...</p>
@@ -181,52 +236,7 @@ function GasChart({ history }: { history: Array<{ timestamp: number; gwei: numbe
     );
   }
 
-  const data = history.slice(0, 20).reverse();
-  const maxGwei = Math.max(...data.map((h) => h.gwei));
-  const minGwei = Math.min(...data.map((h) => h.gwei));
-  const avgGwei = data.reduce((sum, h) => sum + h.gwei, 0) / data.length;
-  
-  // Calculate range with minimum visual difference
-  // If values are too similar, create artificial range for visibility
-  let range = maxGwei - minGwei;
-  let displayMin = minGwei;
-  let displayMax = maxGwei;
-  
-  if (range < avgGwei * 0.1) {
-    // Less than 10% variation - expand range for visibility
-    const expandedRange = avgGwei * 0.2 || 0.01; // At least 0.01 Gwei range
-    displayMin = avgGwei - expandedRange / 2;
-    displayMax = avgGwei + expandedRange / 2;
-    range = expandedRange;
-  }
-
-  // Create smooth line points with proper scaling
-  const points = data
-    .map((h, i) => {
-      const x = (i / Math.max(data.length - 1, 1)) * 100;
-      // Scale Y from 10 to 90 (leaving padding at top/bottom)
-      const normalizedY = (h.gwei - displayMin) / range;
-      const y = 90 - normalizedY * 80; // Inverted Y axis, 10-90 range
-      return `${x.toFixed(1)},${Math.max(10, Math.min(90, y)).toFixed(1)}`;
-    })
-    .join(" ");
-
-  // Create area fill points
-  const firstPoint = points.split(" ")[0];
-  const lastPoint = points.split(" ").pop();
-  const areaPoints = `${firstPoint?.split(",")[0] || 0},95 ${points} ${lastPoint?.split(",")[0] || 100},95`;
-
-  // Determine color based on trend
-  const latestGwei = data[data.length - 1]?.gwei || 0;
-  const previousGwei = data[data.length - 2]?.gwei || latestGwei;
-  const changePercent = previousGwei > 0 ? ((latestGwei - previousGwei) / previousGwei) * 100 : 0;
-  
-  // Only show color change if > 1% difference
-  const isRising = changePercent > 1;
-  const isFalling = changePercent < -1;
-  
-  const lineColor = isRising ? "text-red-500" : isFalling ? "text-green-500" : "text-blue-500";
-  const fillColor = isRising ? "text-red-50" : isFalling ? "text-green-50" : "text-blue-50";
+  const { data, points, areaPoints, lineColor, fillColor, minGwei, maxGwei, latestGwei, displayMin, range } = chartData;
 
   return (
     <div className="mt-3 bg-gray-50 rounded-lg p-3">

@@ -155,38 +155,38 @@ export function useChatSessions(userId?: string) {
     setError(null);
     try {
       const id = await dbService.createChatSession(session);
-      setSessions([...sessions, { ...session, id }]);
+      setSessions((prev) => [...prev, { ...session, id }]);
       return id;
     } catch (err) {
       const message = err instanceof Error ? err.message : 'Failed to create session';
       setError(message);
       throw err;
     }
-  }, [sessions]);
+  }, []);
 
   const updateSession = useCallback(async (session: ChatSession) => {
     setError(null);
     try {
       await dbService.updateChatSession(session);
-      setSessions(sessions.map((s) => (s.id === session.id ? session : s)));
+      setSessions((prev) => prev.map((s) => (s.id === session.id ? session : s)));
     } catch (err) {
       const message = err instanceof Error ? err.message : 'Failed to update session';
       setError(message);
       throw err;
     }
-  }, [sessions]);
+  }, []);
 
   const deleteSession = useCallback(async (sessionId: string) => {
     setError(null);
     try {
       await dbService.deleteChatSession(sessionId);
-      setSessions(sessions.filter((s) => s.id !== sessionId));
+      setSessions((prev) => prev.filter((s) => s.id !== sessionId));
     } catch (err) {
       const message = err instanceof Error ? err.message : 'Failed to delete session';
       setError(message);
       throw err;
     }
-  }, [sessions]);
+  }, []);
 
   useEffect(() => {
     if (userId) {
@@ -235,38 +235,38 @@ export function useContacts(userId?: string) {
     setError(null);
     try {
       const id = await dbService.createContact(contact);
-      setContacts([...contacts, { ...contact, id }]);
+      setContacts((prev) => [...prev, { ...contact, id }]);
       return id;
     } catch (err) {
       const message = err instanceof Error ? err.message : 'Failed to create contact';
       setError(message);
       throw err;
     }
-  }, [contacts]);
+  }, []);
 
   const updateContact = useCallback(async (contact: Contact) => {
     setError(null);
     try {
       await dbService.updateContact(contact);
-      setContacts(contacts.map((c) => (c.id === contact.id ? contact : c)));
+      setContacts((prev) => prev.map((c) => (c.id === contact.id ? contact : c)));
     } catch (err) {
       const message = err instanceof Error ? err.message : 'Failed to update contact';
       setError(message);
       throw err;
     }
-  }, [contacts]);
+  }, []);
 
   const deleteContact = useCallback(async (contactId: string) => {
     setError(null);
     try {
       await dbService.deleteContact(contactId);
-      setContacts(contacts.filter((c) => c.id !== contactId));
+      setContacts((prev) => prev.filter((c) => c.id !== contactId));
     } catch (err) {
       const message = err instanceof Error ? err.message : 'Failed to delete contact';
       setError(message);
       throw err;
     }
-  }, [contacts]);
+  }, []);
 
   useEffect(() => {
     if (userId) {
@@ -447,14 +447,14 @@ export function usePortfolioSnapshots(userId?: string) {
     setError(null);
     try {
       const id = await dbService.createPortfolioSnapshot(snapshot);
-      setSnapshots([{ ...snapshot, id }, ...snapshots]);
+      setSnapshots((prev) => [{ ...snapshot, id }, ...prev]);
       return id;
     } catch (err) {
       const message = err instanceof Error ? err.message : 'Failed to create snapshot';
       setError(message);
       throw err;
     }
-  }, [snapshots]);
+  }, []);
 
   useEffect(() => {
     if (userId) {

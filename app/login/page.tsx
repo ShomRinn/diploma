@@ -48,6 +48,7 @@ export default function LoginPage() {
       // Also store in cookies for middleware access
       console.log('[Login] Setting cookies for server-side middleware...');
       document.cookie = `token=${session.token}; path=/; max-age=${7 * 24 * 60 * 60}`;
+      document.cookie = `refreshToken=${session.refreshToken}; path=/; max-age=${7 * 24 * 60 * 60}`;
       document.cookie = `userId=${session.userId}; path=/; max-age=${7 * 24 * 60 * 60}`;
       document.cookie = `userEmail=${session.email}; path=/; max-age=${7 * 24 * 60 * 60}`;
 

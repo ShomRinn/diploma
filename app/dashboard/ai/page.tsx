@@ -35,11 +35,10 @@ export default function AIPage() {
       setShowChat(true);
       setInitialCommand("");
       setIsLoadingChat(false);
-    } else if (savedInitialMessages.length > 0 && !chatId) {
-      // If there are saved messages, show the chat
-      setShowChat(true);
     }
-  }, [searchParams, loadSession, savedInitialMessages.length, isLoadingChat]);
+    // DO NOT auto-show chat - always show welcome screen first
+    // User must click "Start New Conversation" to open chat
+  }, [searchParams, loadSession, isLoadingChat]);
 
   // Use saved messages or create new ones
   const initialMessages: Message[] = savedInitialMessages.length > 0 ? savedInitialMessages : [

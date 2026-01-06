@@ -207,12 +207,29 @@ export function useRealtimeBlockchain(
   // SSE Connection
   // ===========================================================================
 
-  const connect = useCallback(() => {
+  const connect = useCallback(async () => {
     console.log(`[useRealtimeBlockchain] Connecting to network: ${networkId}`);
     
     if (eventSourceRef.current) {
       console.log('[useRealtimeBlockchain] Closing existing connection');
       eventSourceRef.current.close();
+    }
+
+    // Ensure token is valid before connecting
+    try {
+      const { ensureValidToken } = await import('@/lib/auth-refresh');
+      const token = await ensureValidToken();
+      if (!token) {
+        console.warn('[useRealtimeBlockchain] No valid token, cannot connect');
+        setError('Authentication required. Please login again.');
+        setConnectionStatus('error');
+        return;
+      }
+    } catch (error) {
+      console.error('[useRealtimeBlockchain] Failed to ensure valid token:', error);
+      setError('Authentication error. Please login again.');
+      setConnectionStatus('error');
+      return;
     }
 
     const url = new URL('/api/realtime/stream', window.location.origin);
@@ -229,7 +246,37 @@ export function useRealtimeBlockchain(
     const eventSource = new EventSource(url.toString());
     eventSourceRef.current = eventSource;
 
+    // Track if connection was opened successfully
+    let connectionOpened = false;
+    const openTimeout = setTimeout(() => {
+      if (!connectionOpened) {
+        // Connection didn't open within 5 seconds, likely 401
+        console.warn('[useRealtimeBlockchain] Connection timeout, likely auth error');
+        eventSource.close();
+        // Try to refresh token and reconnect
+        (async () => {
+          try {
+            const { refreshToken } = await import('@/lib/auth-refresh');
+            const newToken = await refreshToken();
+            if (newToken) {
+              console.log('[useRealtimeBlockchain] Token refreshed after timeout, reconnecting...');
+              setTimeout(() => {
+                if (reconnectAttemptsRef.current < MAX_RECONNECT_ATTEMPTS) {
+                  reconnectAttemptsRef.current++;
+                  connect();
+                }
+              }, 1000);
+            }
+          } catch (error) {
+            console.error('[useRealtimeBlockchain] Failed to refresh token:', error);
+          }
+        })();
+      }
+    }, 5000);
+
     eventSource.onopen = () => {
+      connectionOpened = true;
+      clearTimeout(openTimeout);
       setConnectionStatus('connected');
       setError(null);
       reconnectAttemptsRef.current = 0;
@@ -245,7 +292,37 @@ export function useRealtimeBlockchain(
       }
     };
 
-    eventSource.onerror = () => {
+    eventSource.onerror = async (error) => {
+      console.error('[useRealtimeBlockchain] SSE error:', error);
+      
+      // Check if it's an authentication error (401)
+      // EventSource doesn't expose status code directly, but we can check readyState
+      if (eventSource.readyState === EventSource.CLOSED) {
+        // Try to refresh token and reconnect
+        try {
+          const { refreshToken } = await import('@/lib/auth-refresh');
+          const newToken = await refreshToken();
+          
+          if (newToken) {
+            console.log('[useRealtimeBlockchain] Token refreshed, reconnecting...');
+            eventSource.close();
+            // Retry connection after short delay
+            setTimeout(() => {
+              if (reconnectAttemptsRef.current < MAX_RECONNECT_ATTEMPTS) {
+                reconnectAttemptsRef.current++;
+                connect();
+              } else {
+                setError('Failed to connect after multiple attempts');
+                setConnectionStatus('error');
+              }
+            }, 1000);
+            return;
+          }
+        } catch (refreshError) {
+          console.error('[useRealtimeBlockchain] Failed to refresh token:', refreshError);
+        }
+      }
+      
       setConnectionStatus('error');
       setError('Connection lost');
       eventSource.close();

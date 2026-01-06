@@ -3,7 +3,7 @@
 import { Button } from "@/components/ui/button";
 import { ChatSession, chatHistoryStorage } from "@/lib/chatHistory";
 import { Trash2, MessageSquare, Plus } from "lucide-react";
-import { useEffect, useState, useCallback } from "react";
+import { useEffect, useState, useCallback, useMemo } from "react";
 
 interface ChatHistoryProps {
   currentSessionId: string | null;
@@ -49,7 +49,8 @@ export const ChatHistory = ({
     }
   }, [loadSessions, onNewChat]);
 
-  const formatDate = (timestamp: number) => {
+  // Memoize formatDate function to avoid recreation
+  const formatDate = useCallback((timestamp: number) => {
     const date = new Date(timestamp);
     const now = new Date();
     const diff = now.getTime() - date.getTime();
@@ -59,7 +60,7 @@ export const ChatHistory = ({
     if (days === 1) return "Yesterday";
     if (days < 7) return `${days} days ago`;
     return date.toLocaleDateString();
-  };
+  }, []);
 
   return (
     <>

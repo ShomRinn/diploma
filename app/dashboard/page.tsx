@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useCallback, useRef } from "react";
 import { useAccount } from "wagmi";
 import { Button } from "@/components/ui/button";
 import { publicClient } from "@/wagmi.config";
@@ -51,13 +51,9 @@ export default function HomePage() {
     router.push("/welcome");
   };
 
-  useEffect(() => {
-    if (address) {
-      loadBalance();
-    }
-  }, [address]);
-
-  const loadBalance = async () => {
+  const loadBalanceTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+  
+  const loadBalance = useCallback(async () => {
     if (!address) return;
     try {
       const bal = await publicClient.getBalance({ address });
@@ -67,11 +63,37 @@ export default function HomePage() {
     } finally {
       setLoading(false);
     }
-  };
-
-  const [change24h, setChange24h] = useState<string>("--");
+  }, [address]);
 
   useEffect(() => {
+    if (address) {
+      // Debounce balance loading
+      if (loadBalanceTimeoutRef.current) {
+        clearTimeout(loadBalanceTimeoutRef.current);
+      }
+      loadBalanceTimeoutRef.current = setTimeout(() => {
+        loadBalance();
+      }, 300);
+    }
+    return () => {
+      if (loadBalanceTimeoutRef.current) {
+        clearTimeout(loadBalanceTimeoutRef.current);
+      }
+    };
+  }, [address, loadBalance]);
+
+  const [change24h, setChange24h] = useState<string>("--");
+  const priceCacheRef = useRef<{ data: string; timestamp: number } | null>(null);
+  const PRICE_CACHE_TTL = 5 * 60 * 1000; // 5 minutes
+
+  useEffect(() => {
+    // Check cache first
+    const now = Date.now();
+    if (priceCacheRef.current && (now - priceCacheRef.current.timestamp) < PRICE_CACHE_TTL) {
+      setChange24h(priceCacheRef.current.data);
+      return;
+    }
+
     // Fetch real ETH price and 24h change from CoinGecko
     const fetchPriceData = async () => {
       try {
@@ -80,7 +102,10 @@ export default function HomePage() {
         );
         const data = await response.json();
         const change = data.ethereum.usd_24h_change;
-        setChange24h(change >= 0 ? `+${change.toFixed(2)}%` : `${change.toFixed(2)}%`);
+        const formattedChange = change >= 0 ? `+${change.toFixed(2)}%` : `${change.toFixed(2)}%`;
+        setChange24h(formattedChange);
+        // Cache the result
+        priceCacheRef.current = { data: formattedChange, timestamp: now };
       } catch (error) {
         console.error("Error fetching price data:", error);
       }
