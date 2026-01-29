@@ -4,6 +4,13 @@ Welcome to the AI Bank documentation! This folder contains comprehensive guides 
 
 ## 📚 Documentation Structure
 
+### 🔌 [API Documentation](./API_DOCUMENTATION.md)
+Complete REST API reference:
+- **[API Documentation](./API_DOCUMENTATION.md)** - Human-readable API reference
+- **[OpenAPI Specification](./openapi.yaml)** - Industry-standard OpenAPI 3.1.0 spec
+- **[Integration Tutorial](./INTEGRATION_TUTORIAL.md)** - Step-by-step integration guide
+- **[Documentation Strategy](./DOCUMENTATION_STRATEGY.md)** - Tools, standards, and conventions
+
 ### 🤖 [AI Features](./ai/)
 Complete documentation for AI assistant and tools:
 - **[Implementation Plan](./ai/AI_FEATURES_IMPLEMENTATION_PLAN.md)** - Comprehensive implementation roadmap
@@ -19,6 +26,12 @@ Real-time analytics powered by CoinGecko:
 - **[Analytics README](./analytics/README.md)** - Overview and quick links
 
 ## 🚀 Quick Start
+
+### For API Integrators
+1. Start with [Integration Tutorial](./INTEGRATION_TUTORIAL.md)
+2. Review [API Documentation](./API_DOCUMENTATION.md)
+3. Check [OpenAPI Specification](./openapi.yaml) (validate with Swagger Editor)
+4. Read [Documentation Strategy](./DOCUMENTATION_STRATEGY.md) for standards
 
 ### For New Users
 1. Start with [Quick Start Guide](./ai/QUICK_START.md)

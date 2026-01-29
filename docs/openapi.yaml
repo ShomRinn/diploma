@@ -1,0 +1,579 @@
+openapi: 3.1.0
+info:
+  title: AI Bank API
+  version: 1.0.0
+  description: >-
+    REST API for AI-powered cryptocurrency wallet management.
+
+    All endpoints require JWT authentication via Authorization header or token
+    cookie.
+
+
+    ## Authentication
+
+    - **Bearer Token**: Include JWT in `Authorization: Bearer <token>` header
+
+    - **Cookie**: JWT is also accepted from the `token` cookie
+
+
+    ## Rate Limiting
+
+    - Chat endpoint: 10 requests per minute per client
+
+    - Rate limit headers are included in responses
+
+
+    ## Streaming Responses
+
+    - Chat and realtime endpoints use Server-Sent Events (SSE)
+
+    - Content-Type: `text/event-stream`
+  contact:
+    name: API Support
+    email: support@aibank.example
+  license:
+    name: MIT
+    url: https://opensource.org/licenses/MIT
+servers:
+  - url: http://localhost:3000/api
+    description: Development server
+  - url: https://api.aibank.example
+    description: Production server
+tags:
+  - name: Chat
+    description: AI assistant chat endpoints
+  - name: Realtime
+    description: Real-time blockchain data streaming
+  - name: Auth
+    description: Authentication and token management
+security:
+  - bearerAuth: []
+  - cookieAuth: []
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+      description: JWT token in Authorization header
+    cookieAuth:
+      type: apiKey
+      in: cookie
+      name: token
+      description: JWT token in cookie
+  schemas:
+    Message:
+      type: object
+      properties:
+        role:
+          type: string
+          enum:
+            - user
+            - assistant
+            - system
+          description: Message role
+          example: user
+        content:
+          type: string
+          minLength: 1
+          maxLength: 10000
+          description: Message content
+          example: What is my balance?
+      required:
+        - role
+        - content
+    Contact:
+      type: object
+      properties:
+        name:
+          type: string
+          minLength: 1
+          maxLength: 100
+          description: Contact name
+          example: Alice
+        address:
+          type: string
+          pattern: ^0x[a-fA-F0-9]{40}$
+          description: Contact Ethereum address
+          example: "0x742d35Cc6634C0532925a3b844Bc9e7595f0bEb"
+      required:
+        - name
+        - address
+    ChatRequest:
+      type: object
+      properties:
+        messages:
+          type: array
+          items:
+            $ref: "#/components/schemas/Message"
+          minItems: 1
+          description: Array of message objects
+        contacts:
+          type: array
+          items:
+            $ref: "#/components/schemas/Contact"
+          default: []
+          description: Array of contact objects for AI context
+      required:
+        - messages
+    BlockData:
+      type:
+        - object
+        - "null"
+      properties:
+        number:
+          type: string
+          description: Block number as string
+          example: "18500000"
+        hash:
+          type: string
+          description: Block hash
+          example: 0x1234...abcd
+        timestamp:
+          type: string
+          description: Block timestamp as string
+          example: "1234567890"
+        transactionCount:
+          type: integer
+          description: Number of transactions in block
+          example: 150
+      required:
+        - number
+        - hash
+        - timestamp
+        - transactionCount
+    GasInfo:
+      type:
+        - object
+        - "null"
+      properties:
+        gasPriceGwei:
+          type: number
+          description: Current gas price in Gwei
+          example: 25.5
+        baseFeeGwei:
+          type:
+            - number
+            - "null"
+          description: Base fee in Gwei
+          example: 20
+        priorityFeeGwei:
+          type: number
+          description: Priority fee in Gwei
+          example: 5.5
+        networkLoad:
+          type: number
+          minimum: 0
+          maximum: 1
+          description: Network load (0.0 to 1.0)
+          example: 0.75
+        trend:
+          type: string
+          enum:
+            - up
+            - down
+            - stable
+          description: Gas price trend
+          example: up
+        history:
+          type: array
+          items:
+            type: object
+            properties:
+              timestamp:
+                type: number
+                example: 1234567800
+              gwei:
+                type: number
+                example: 24
+            required:
+              - timestamp
+              - gwei
+          description: Historical gas prices
+      required:
+        - gasPriceGwei
+        - baseFeeGwei
+        - priorityFeeGwei
+        - networkLoad
+        - trend
+    ServiceStats:
+      type:
+        - object
+        - "null"
+      properties:
+        blocksReceived:
+          type: integer
+          description: Total blocks received
+          example: 100
+        eventsReceived:
+          type: integer
+          description: Total events received
+          example: 250
+        uptime:
+          type: integer
+          description: Service uptime in seconds
+          example: 3600
+      required:
+        - blocksReceived
+        - eventsReceived
+        - uptime
+    RealtimeStateResponse:
+      type: object
+      properties:
+        success:
+          type: boolean
+          description: Request success status
+          example: true
+        timestamp:
+          type: integer
+          description: Server timestamp in milliseconds
+          example: 1234567890000
+        data:
+          type:
+            - object
+            - "null"
+          properties:
+            connectionStatus:
+              type: string
+              enum:
+                - connected
+                - disconnected
+                - connecting
+              example: connected
+            lastEventTime:
+              type:
+                - number
+                - "null"
+              description: Last event timestamp
+              example: 1234567890
+            latestBlock:
+              $ref: "#/components/schemas/BlockData"
+            gasInfo:
+              $ref: "#/components/schemas/GasInfo"
+            stats:
+              $ref: "#/components/schemas/ServiceStats"
+          required:
+            - connectionStatus
+            - lastEventTime
+            - latestBlock
+            - gasInfo
+            - stats
+          description: State data (null on error)
+        message:
+          type: string
+          description: Success message (for POST requests)
+          example: Service started
+        error:
+          type: string
+          description: Error message (for error responses)
+          example: Failed to get realtime state
+      required:
+        - success
+        - timestamp
+        - data
+    RealtimeStateRequest:
+      type: object
+      properties:
+        action:
+          type: string
+          enum:
+            - start
+            - stop
+          description: Action to perform
+          example: start
+        address:
+          type: string
+          pattern: ^0x[a-fA-F0-9]{40}$
+          description: Wallet address to watch (only for start action)
+          example: "0x742d35Cc6634C0532925a3b844Bc9e7595f0bEb"
+      required:
+        - action
+    RefreshTokenResponse:
+      type: object
+      properties:
+        token:
+          type: string
+          description: New JWT token
+          example: eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...
+        expiresAt:
+          type: integer
+          description: Token expiration timestamp in milliseconds
+          example: 1234567890000
+      required:
+        - token
+        - expiresAt
+    ErrorResponse:
+      type: object
+      properties:
+        error:
+          type: string
+          description: Human-readable error message
+          example: Invalid request
+        type:
+          type: string
+          enum:
+            - TIMEOUT
+            - RATE_LIMIT
+            - AUTH_ERROR
+            - INVALID_REQUEST
+            - MODEL_OVERLOADED
+            - SERVICE_UNAVAILABLE
+            - CONTENT_FILTER
+            - CONTEXT_LENGTH
+            - UNKNOWN
+          description: Error type
+          example: INVALID_REQUEST
+        retryable:
+          type: boolean
+          description: Whether the request can be retried
+          example: true
+        retryAfter:
+          type: integer
+          description: Seconds to wait before retrying
+          example: 60
+        details:
+          type: array
+          items:
+            type: string
+          description: Additional error details
+          example:
+            - Messages array is required
+        blocked:
+          type: boolean
+          description: Whether content was blocked by moderation
+          example: false
+      required:
+        - error
+  parameters: {}
+paths:
+  /chat:
+    post:
+      tags:
+        - Chat
+      summary: Send messages to AI assistant
+      description: >-
+        Sends messages to the AI assistant and receives streaming responses via
+        Server-Sent Events (SSE).
+
+        Supports rate limiting, content moderation, and prompt injection
+        protection.
+      operationId: postChat
+      security:
+        - bearerAuth: []
+        - cookieAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ChatRequest"
+      responses:
+        "200":
+          description: Streaming response from AI assistant
+          headers:
+            X-RateLimit-Limit:
+              schema:
+                type: integer
+              description: Maximum requests allowed
+            X-RateLimit-Remaining:
+              schema:
+                type: integer
+              description: Remaining requests in current window
+            X-RateLimit-Reset:
+              schema:
+                type: integer
+              description: Timestamp when rate limit resets
+          content:
+            text/event-stream:
+              schema:
+                type: string
+                format: binary
+        "400":
+          description: Bad request - invalid input
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "401":
+          description: Unauthorized - invalid or missing token
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "429":
+          description: Rate limit exceeded
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "500":
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+  /realtime/stream:
+    get:
+      tags:
+        - Realtime
+      summary: Real-time blockchain data stream
+      description: >-
+        Establishes a Server-Sent Events (SSE) connection for real-time
+        blockchain data streaming.
+
+        Server sends ping messages every 30 seconds to maintain connection.
+      operationId: getRealtimeStream
+      security:
+        - bearerAuth: []
+        - cookieAuth: []
+      parameters:
+        - schema:
+            type: string
+            enum:
+              - ethereum
+              - linea-mainnet
+              - polygon
+              - arbitrum
+              - optimism
+              - base
+              - linea-sepolia
+              - sepolia
+            description: Network ID to monitor
+            example: ethereum
+          required: false
+          name: network
+          in: query
+        - schema:
+            type: string
+            pattern: ^0x[a-fA-F0-9]{40}$
+            description: Wallet address to watch for transactions
+            example: "0x742d35Cc6634C0532925a3b844Bc9e7595f0bEb"
+          required: false
+          name: address
+          in: query
+      responses:
+        "200":
+          description: SSE stream with real-time blockchain events
+          content:
+            text/event-stream:
+              schema:
+                type: string
+                format: binary
+        "400":
+          description: Bad request
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "401":
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "500":
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+  /realtime/state:
+    get:
+      tags:
+        - Realtime
+      summary: Get real-time service state
+      description: Retrieves the current state of the real-time blockchain service
+      operationId: getRealtimeState
+      security:
+        - bearerAuth: []
+        - cookieAuth: []
+      responses:
+        "200":
+          description: Current service state
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/RealtimeStateResponse"
+        "401":
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "500":
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+    post:
+      tags:
+        - Realtime
+      summary: Control real-time service
+      description: Starts or stops the real-time blockchain service
+      operationId: postRealtimeState
+      security:
+        - bearerAuth: []
+        - cookieAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/RealtimeStateRequest"
+      responses:
+        "200":
+          description: Action result
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/RealtimeStateResponse"
+        "400":
+          description: Bad request
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "401":
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "500":
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+  /auth/refresh:
+    post:
+      tags:
+        - Auth
+      summary: Refresh JWT token
+      description: |-
+        Refreshes an expired JWT token using a refresh token from cookie.
+        Returns a new JWT token and sets it in a cookie.
+      operationId: postAuthRefresh
+      security:
+        - cookieAuth: []
+      responses:
+        "200":
+          description: New token issued
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/RefreshTokenResponse"
+        "401":
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "500":
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+webhooks: {}
